@@ -62,28 +62,41 @@ void loop() {
     currentAngle = readEncoderAngle();
 
     if(currentAngle != previousAngle){
-        char angleText[10];
-        dtostrf(currentAngle,4,1,angleText);
-        tft.fillRect(31,51,93,45,ST7735_BLACK);
-        tft.setFont(&FreeSans18pt7b);
-        tft.setCursor(50,85);
-        tft.print(angleText);
+        char currentText[10],previousText[10];
+        dtostrf(currentAngle,4,1,currentText);
+        dtostrf(previousAngle,4,1,previousText);
 
+        bool isSingleDigit = (currentText[1] == '.');
+
+        
+        if(currentText[0] != previousText[0]){
+            tft.fillRect(31,51,93,45,ST7735_BLACK);
+            tft.setFont(&FreeSans18pt7b);
+            tft.setCursor(46,85);
+            tft.print(currentText[0]);
+            tft.print(currentText[1]);            
+        } else if (currentText[1] != currentText[1]){
+            tft.fillRect(51,51,73,45,ST7735_BLACK);
+            tft.setFont(&FreeSans18pt7b);
+            tft.setCursor(60,85);
+            tft.print(currentText[1]);            
+        }
+
+        tft.setFont(&FreeSans18pt7b);
+        tft.setCursor(85,85);
+        tft.print(".");   
+        
+      if(currentText[3] != previousText[3]){
+            tft.fillRect(94,51,23,45,ST7735_BLACK);
+            tft.setFont(&FreeSans18pt7b);
+            tft.setCursor(95,85);
+            tft.print(currentText[3]);            
+
+      }
         previousAngle = currentAngle;
         
     }
-
     
-/*
-    tft.fillRect(31,51,93,45,ST7735_BLACK);
-    tft.setFont(&FreeSans18pt7b);
-    tft.setCursor(50,80);
-    tft.println(currentAngle);
-*/
-    
-    // dtostrf(currentAngle,4,1,angleText);
-    // drawRightString(angleText,150,85);
-        
   delay(50);
 }
 
