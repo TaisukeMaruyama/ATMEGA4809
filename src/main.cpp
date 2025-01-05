@@ -13,6 +13,7 @@
 #define TFT_RST 9
 #define TFT_WIDTH 160
 #define TFT_HEIGHT 80
+#define TFT_POWER_PIN 13
 const int ButtonPin = 12;
 
 #define AS5600_AS5601_DEV_ADDRESS 0x36
@@ -34,6 +35,7 @@ float previousHeight = -1;
 float initialAngle = 0;
 float relativeAngle = 0;
 float height = 0.0;
+unsigned long lastUpdateTime = 0;
 
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
@@ -49,7 +51,8 @@ void setup() {
     Wire.setClock(400000);
 
     pinMode(ButtonPin,INPUT_PULLUP);
-    
+    pinMode(TFT_POWER_PIN,OUTPUT);
+    digitalWrite(TFT_POWER_PIN,HIGH);
 
     
     tft.initR(INITR_GREENTAB);
@@ -139,9 +142,14 @@ void loop() {
 
       }
         previousHeight = height;
+        lastUpdateTime = millis();
+        digitalWrite(TFT_POWER_PIN,HIGH);
         
     }
     
+    if(millis() - lastUpdateTime > 60000){
+        digitalWrite(TFT_POWER_PIN,LOW);
+    }
     
   delay(50);
 }
