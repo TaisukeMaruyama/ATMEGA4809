@@ -5,6 +5,8 @@
 #include <Wire.h>
 #include "encoder.h"
 #include <Fonts/FreeSans18pt7b.h>
+#include <Fonts/FreeSans9pt7b.h>
+
 
 #define TFT_CS  7
 #define TFT_DC  10
@@ -37,6 +39,10 @@ float relativeAngle = 0;
 float height = 0.0;
 unsigned long lastUpdateTime = 0;
 
+unsigned long lastInteractionTime = 0;
+const unsigned long inactivityThreshold = 60000;
+const float sleepValue = 0.5;
+
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 float readEncoderAngle();
@@ -58,13 +64,14 @@ void setup() {
     tft.initR(INITR_GREENTAB);
     tft.invertDisplay(true);
     tft.fillScreen(ST7735_BLACK);
-    tft.setTextColor(ST7735_WHITE);
+    tft.setTextColor(0xf7be);
     tft.setRotation(3);
     tft.setTextSize(1);
-    tft.drawRoundRect(30, 30, 100, 70, 5, ST7735_BLUE);
-    tft.fillRoundRect(30, 30, 100, 20, 5, ST7735_BLUE);
-    tft.setCursor(45,38);
-    tft.println("RIDE HEIGHT");
+    tft.drawRoundRect(30, 30, 100, 70, 8, 0x2d13);
+    tft.fillRoundRect(30, 30, 100, 23, 8, 0x2d13);
+    tft.setCursor(35,40);
+    tft.setFont(&FreeSans9pt7b);
+    tft.println("RideHeight");
 
 
     
@@ -78,6 +85,7 @@ void loop() {
     if(digitalRead(ButtonPin) == LOW){
         initialAngle = readEncoderAngle();
         isReferenceSet = true;
+       
     }
 
     if(isReferenceSet == true){
@@ -97,9 +105,18 @@ void loop() {
     height = 0.0;
     }
 
-     height = height + 3.18;
-       
+     height = height + 3.18;      
 
+    }
+
+    if(abs(height - previousHeight) > sleepValue){
+        lastInteractionTime = millis();
+    }
+
+    if(millis() - lastInteractionTime > inactivityThreshold){
+        digitalWrite(TFT_POWER_PIN,LOW);
+    } else {
+        digitalWrite(TFT_POWER_PIN, HIGH);
     }
 
     if(height != previousHeight){
@@ -110,12 +127,12 @@ void loop() {
         bool isSingleDigit = (heightText[1] == '.');
       
         if(heightText[0] != previousText[0]){
-            tft.fillRect(31,51,40,45,ST7735_BLACK);
+            tft.fillRect(33,56,38,41,ST7735_BLACK);
             tft.setFont(&FreeSans18pt7b);
             if(isSingleDigit){
-            tft.setCursor(60,85);
+            tft.setCursor(60,87);
             }else{
-            tft.setCursor(46,85);
+            tft.setCursor(46,87);
             }
             
             tft.print(heightText[0]);
@@ -124,20 +141,20 @@ void loop() {
                 
         } 
         if (heightText[1] != previousText[1]){
-            tft.fillRect(67,51,40,45,ST7735_BLACK);
+            tft.fillRect(67,56,40,41,ST7735_BLACK);
             tft.setFont(&FreeSans18pt7b);
-            tft.setCursor(68,85);
+            tft.setCursor(68,87);
             tft.print(heightText[1]);            
         }
 
         tft.setFont(&FreeSans18pt7b);
-            tft.setCursor(85,85);
+            tft.setCursor(85,87);
         tft.print(heightText[2]);   
     
       if(heightText[3] != previousText[3]){
-            tft.fillRect(94,51,23,45,ST7735_BLACK);
+            tft.fillRect(94,56,23,41,ST7735_BLACK);
             tft.setFont(&FreeSans18pt7b);
-                tft.setCursor(95,85);
+                tft.setCursor(95,87);
             tft.print(heightText[3]);            
 
       }
