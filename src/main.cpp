@@ -4,9 +4,13 @@
 #include <Adafruit_ST7735.h>
 #include <Wire.h>
 #include "encoder.h"
+#include "batt.h"
 #include <Fonts/FreeSans18pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 
+
+#define GreemLed 14
+#define RedLed 15
 
 #define TFT_CS  7
 #define TFT_DC  10
@@ -43,6 +47,8 @@ unsigned long lastInteractionTime = 0;
 const unsigned long inactivityThreshold = 60000;
 const float sleepValue = 0.5;
 
+int batteryThreshold = 340;
+
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 float readEncoderAngle();
@@ -60,18 +66,21 @@ void setup() {
     pinMode(TFT_POWER_PIN,OUTPUT);
     digitalWrite(TFT_POWER_PIN,HIGH);
 
+    pinMode(GreemLed, OUTPUT);
+    pinMode(RedLed,OUTPUT);
+
     
     tft.initR(INITR_GREENTAB);
     tft.invertDisplay(true);
-    tft.fillScreen(ST7735_BLACK);
-    tft.setTextColor(0xf7be);
+    tft.fillScreen(ST7735_WHITE);
+    tft.setTextColor(0x0020);
     tft.setRotation(3);
     tft.setTextSize(1);
-    tft.drawRoundRect(30, 30, 100, 70, 8, 0x2d13);
-    tft.fillRoundRect(30, 30, 100, 23, 8, 0x2d13);
+    tft.drawRoundRect(30, 30, 100, 70, 8, 0x6aee);
+    tft.fillRoundRect(30, 30, 100, 23, 8, 0x6aee);
     tft.setCursor(35,40);
     tft.setFont(&FreeSans9pt7b);
-    tft.println("RideHeight");
+    tft.println("RideHeight");    
 
 
     
@@ -80,6 +89,7 @@ void setup() {
 
 void loop() {
 
+    
     currentAngle = readEncoderAngle();
 
     if(digitalRead(ButtonPin) == LOW){
@@ -127,7 +137,7 @@ void loop() {
         bool isSingleDigit = (heightText[1] == '.');
       
         if(heightText[0] != previousText[0]){
-            tft.fillRect(33,56,38,41,ST7735_BLACK);
+            tft.fillRect(33,56,38,41,ST7735_WHITE);
             tft.setFont(&FreeSans18pt7b);
             if(isSingleDigit){
             tft.setCursor(60,87);
@@ -141,7 +151,7 @@ void loop() {
                 
         } 
         if (heightText[1] != previousText[1]){
-            tft.fillRect(67,56,40,41,ST7735_BLACK);
+            tft.fillRect(67,56,40,41,ST7735_WHITE);
             tft.setFont(&FreeSans18pt7b);
             tft.setCursor(68,87);
             tft.print(heightText[1]);            
@@ -152,7 +162,7 @@ void loop() {
         tft.print(heightText[2]);   
     
       if(heightText[3] != previousText[3]){
-            tft.fillRect(94,56,23,41,ST7735_BLACK);
+            tft.fillRect(94,56,23,41,ST7735_WHITE);
             tft.setFont(&FreeSans18pt7b);
                 tft.setCursor(95,87);
             tft.print(heightText[3]);            
@@ -167,7 +177,16 @@ void loop() {
     if(millis() - lastUpdateTime > 60000){
         digitalWrite(TFT_POWER_PIN,LOW);
     }
-    
+
+    int BattValue = getBatteryRaw();
+    if(BattValue > batteryThreshold){
+        digitalWrite(GreemLed,HIGH);
+        digitalWrite(RedLed,LOW);
+    }else{
+        digitalWrite(GreemLed,LOW);
+        digitalWrite(RedLed,HIGH);
+    }
+
   delay(50);
 }
 
