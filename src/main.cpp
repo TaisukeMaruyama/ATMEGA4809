@@ -36,12 +36,20 @@ uint16_t maxAngle = 0x0400;
 #define AS5600_AS5601_REG_RAW_ANGLE 0x0C
 
 bool isReferenceSet = false;
+bool sleepMode = 0;
+bool GreenLedState = false;
+bool RedLedState = false;
 float currentAngle = 0;
 float previousHeight = -1;
 float initialAngle = 0;
 float relativeAngle = 0;
 float height = 0.0;
 unsigned long lastUpdateTime = 0;
+unsigned long previousMillis = 0;
+int LedOnTime = 20;
+int LedOffTime = 3000;
+
+
 
 unsigned long lastInteractionTime = 0;
 const unsigned long inactivityThreshold = 60000;
@@ -72,12 +80,12 @@ void setup() {
     
     tft.initR(INITR_GREENTAB);
     tft.invertDisplay(true);
-    tft.fillScreen(ST7735_WHITE);
-    tft.setTextColor(0x0020);
-    tft.setRotation(3);
+    tft.fillScreen(ST7735_BLACK);
+    tft.setTextColor(0xf7be);
+    tft.setRotation(1);
     tft.setTextSize(1);
-    tft.drawRoundRect(30, 30, 100, 70, 8, 0x6aee);
-    tft.fillRoundRect(30, 30, 100, 23, 8, 0x6aee);
+    tft.drawRoundRect(30, 30, 100, 70, 8, 0x2d13);
+    tft.fillRoundRect(30, 30, 100, 23, 8, 0x2d13);
     tft.setCursor(35,40);
     tft.setFont(&FreeSans9pt7b);
     tft.println("RideHeight");    
@@ -102,9 +110,9 @@ void loop() {
         relativeAngle = currentAngle - initialAngle;
 
           if(relativeAngle > 1){
-    height = -0.951 * ((currentAngle - 360.0) - initialAngle)+0.01;
+    height = -1.346 * ((currentAngle - 360.0) - initialAngle);
     }else{
-    height = -0.951 * relativeAngle + 0.01;
+    height = -1.346 * relativeAngle;
     }
 
     // height = height + 3.0;
@@ -115,7 +123,7 @@ void loop() {
     height = 0.0;
     }
 
-     height = height + 3.18;      
+     height = height + 5.0;      
 
     }
 
@@ -125,8 +133,10 @@ void loop() {
 
     if(millis() - lastInteractionTime > inactivityThreshold){
         digitalWrite(TFT_POWER_PIN,LOW);
+        sleepMode = 1;
     } else {
         digitalWrite(TFT_POWER_PIN, HIGH);
+        sleepMode = 0;
     }
 
     if(height != previousHeight){
@@ -137,7 +147,7 @@ void loop() {
         bool isSingleDigit = (heightText[1] == '.');
       
         if(heightText[0] != previousText[0]){
-            tft.fillRect(33,56,38,41,ST7735_WHITE);
+            tft.fillRect(33,56,38,41,ST7735_BLACK);
             tft.setFont(&FreeSans18pt7b);
             if(isSingleDigit){
             tft.setCursor(60,87);
@@ -151,7 +161,7 @@ void loop() {
                 
         } 
         if (heightText[1] != previousText[1]){
-            tft.fillRect(67,56,40,41,ST7735_WHITE);
+            tft.fillRect(67,56,40,41,ST7735_BLACK);
             tft.setFont(&FreeSans18pt7b);
             tft.setCursor(68,87);
             tft.print(heightText[1]);            
@@ -162,7 +172,7 @@ void loop() {
         tft.print(heightText[2]);   
     
       if(heightText[3] != previousText[3]){
-            tft.fillRect(94,56,23,41,ST7735_WHITE);
+            tft.fillRect(94,56,23,41,ST7735_BLACK);
             tft.setFont(&FreeSans18pt7b);
                 tft.setCursor(95,87);
             tft.print(heightText[3]);            
@@ -173,19 +183,54 @@ void loop() {
         digitalWrite(TFT_POWER_PIN,HIGH);
         
     }
-    
-    if(millis() - lastUpdateTime > 60000){
-        digitalWrite(TFT_POWER_PIN,LOW);
+
+    unsigned long currentMillis = millis();
+    int BattValue = getBatteryRaw();
+
+
+    if(sleepMode == 0){
+        if(BattValue > batteryThreshold){
+            digitalWrite(GreemLed,HIGH);
+            digitalWrite(RedLed,LOW);
+        }else{
+            digitalWrite(GreemLed,LOW);
+            digitalWrite(RedLed,HIGH);
+        }
+    }else{
+        if(BattValue > batteryThreshold){
+        if(GreenLedState){
+            if(currentMillis - previousMillis >= LedOnTime){
+                GreenLedState = false;
+                digitalWrite(GreemLed , LOW);
+                previousMillis = currentMillis;
+            }
+        }else{
+            if(currentMillis - previousMillis >= LedOffTime){
+                GreenLedState = true;
+                digitalWrite(GreemLed , HIGH);
+                previousMillis = currentMillis;
+            
+            }
+        }
+    }else{
+        if(RedLedState){
+            if(currentMillis - previousMillis >= LedOnTime){
+                RedLedState = false;
+                digitalWrite(RedLed , LOW);
+                previousMillis = currentMillis;
+            }
+        }else{
+            if(currentMillis - previousMillis >= LedOffTime){
+                RedLedState = true;
+                digitalWrite(RedLed , HIGH);
+                previousMillis = currentMillis;
+            
+            }
+        }
     }
 
-    int BattValue = getBatteryRaw();
-    if(BattValue > batteryThreshold){
-        digitalWrite(GreemLed,HIGH);
-        digitalWrite(RedLed,LOW);
-    }else{
-        digitalWrite(GreemLed,LOW);
-        digitalWrite(RedLed,HIGH);
     }
+
 
   delay(50);
 }
