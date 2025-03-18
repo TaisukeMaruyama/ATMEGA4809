@@ -7,7 +7,8 @@
 #include "batt.h"
 #include <Fonts/FreeSans18pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
-
+#include <Fonts/FreeMonoBoldOblique9pt7b.h>
+#include <EEPROM.h>
 
 #define GreemLed 14
 #define RedLed 15
@@ -67,6 +68,13 @@ void setMaxAngle(uint16_t maxAngle);
 
 
 void setup() {
+
+    if(EEPROM.read(0) != 0xAA){
+        EEPROM.write(0,0xAA);
+        EEPROM.write(1,0);
+    }    
+
+
     Wire.begin();
     Wire.setClock(400000);
 
@@ -88,7 +96,18 @@ void setup() {
     tft.fillRoundRect(30, 30, 100, 23, 8, 0x2d13);
     tft.setCursor(35,40);
     tft.setFont(&FreeSans9pt7b);
-    tft.println("RideHeight");    
+    tft.println("RideHeight");
+
+    tft.setFont(&FreeMonoBoldOblique9pt7b);
+    tft.setCursor(40,79);
+    tft.println("KO");
+    tft.setCursor(65,79);
+    tft.println("PROPO");
+
+    delay(5000);
+
+    tft.fillRect(33,60,95,30,ST7735_BLACK);
+
 
 
     
@@ -123,7 +142,7 @@ void loop() {
     height = 0.0;
     }
 
-     height = height + 5.0;      
+     height = height + 5.00f;      
 
     }
 
