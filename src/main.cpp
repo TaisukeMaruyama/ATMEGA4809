@@ -45,6 +45,8 @@ float previousHeight = -1;
 float initialAngle = 0;
 float relativeAngle = 0;
 float height = 0.0;
+float smoothHeight = 0.0;
+const float smoothingFactor = 0.7f;
 unsigned long lastUpdateTime = 0;
 unsigned long previousMillis = 0;
 int LedOnTime = 20;
@@ -135,18 +137,20 @@ void loop() {
     }
 
     // height = height + 3.0;
-    if(height < 0){
+    if(height < -5.0f){
     height = 0.0;
     }
     if(height > 50.0){
     height = 0.0;
     }
 
-     height = height + 5.00f;      
+     height = height + 5.00f;
+     
+     smoothHeight = smoothingFactor * height +( 1.0 - smoothingFactor) * smoothHeight;
 
     }
 
-    if(abs(height - previousHeight) > sleepValue){
+    if(abs(smoothHeight - previousHeight) > sleepValue){
         lastInteractionTime = millis();
     }
 
@@ -158,9 +162,9 @@ void loop() {
         sleepMode = 0;
     }
 
-    if(height != previousHeight){
+    if(smoothHeight != previousHeight){
         char heightText[10],previousText[10];
-        dtostrf(height,4,1,heightText);
+        dtostrf(smoothHeight,4,1,heightText);
         dtostrf(previousHeight,4,1,previousText);
 
         bool isSingleDigit = (heightText[1] == '.');
@@ -197,7 +201,7 @@ void loop() {
             tft.print(heightText[3]);            
 
       }
-        previousHeight = height;
+        previousHeight = smoothHeight;
         lastUpdateTime = millis();
         digitalWrite(TFT_POWER_PIN,HIGH);
         
