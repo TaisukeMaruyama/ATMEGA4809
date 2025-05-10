@@ -26,5 +26,6 @@ float readEncoderAngle() {
     uint8_t lowByte = Wire.read();
 
     uint16_t RawAngle = ((uint16_t)highByte << 8) | lowByte;
-    return RawAngle * (360.0 / 4096.0);
+    uint16_t invertedAngle = 4095 - RawAngle;
+    return invertedAngle * (360.0 / 4096.0);
 }

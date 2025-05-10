@@ -10,8 +10,7 @@
 #include <Fonts/FreeMonoBoldOblique9pt7b.h>
 #include <EEPROM.h>
 
-#define GreemLed 14
-#define RedLed 15
+#define GreenLed 16
 
 #define TFT_CS  7
 #define TFT_DC  10
@@ -35,6 +34,7 @@ uint16_t maxAngle = 0x0400;
 
 #define AS5600_AS5601_DEV_ADDRESS 0x36
 #define AS5600_AS5601_REG_RAW_ANGLE 0x0C
+#define DEG_TO_RAD 0.0174532925
 
 bool isReferenceSet = false;
 bool sleepMode = 0;
@@ -44,6 +44,9 @@ float currentAngle = 0;
 float previousHeight = -1;
 float initialAngle = 0;
 float relativeAngle = 0;
+const float proveLength = 80.68612f;
+const float minHeight = 1.9f;
+const float maxHeight = 50.0f;
 float height = 0.0;
 float smoothHeight = 0.0;
 const float smoothingFactor = 0.7f;
@@ -51,12 +54,15 @@ unsigned long lastUpdateTime = 0;
 unsigned long previousMillis = 0;
 int LedOnTime = 20;
 int LedOffTime = 3000;
+int fadeValue = 0;
+int fadeAmount = 10;
+bool fadeDirectionUp = true;
 
 
 
 unsigned long lastInteractionTime = 0;
 const unsigned long inactivityThreshold = 60000;
-const float sleepValue = 0.5;
+const float sleepValue = 1.0;
 
 int batteryThreshold = 340;
 
@@ -74,8 +80,12 @@ void setup() {
     if(EEPROM.read(0) != 0xAA){
         EEPROM.write(0,0xAA);
         EEPROM.write(1,0);
+        float defaultAngle = 0.0f;
+        EEPROM.put(2,defaultAngle);
     }    
 
+    EEPROM.get(2,initialAngle);
+    isReferenceSet = true;
 
     Wire.begin();
     Wire.setClock(400000);
@@ -84,21 +94,23 @@ void setup() {
     pinMode(TFT_POWER_PIN,OUTPUT);
     digitalWrite(TFT_POWER_PIN,HIGH);
 
-    pinMode(GreemLed, OUTPUT);
-    pinMode(RedLed,OUTPUT);
+    // pinMode(GreenLed, OUTPUT);
 
     
     tft.initR(INITR_GREENTAB);
     tft.invertDisplay(true);
     tft.fillScreen(ST7735_BLACK);
-    tft.setTextColor(0xf7be);
     tft.setRotation(1);
     tft.setTextSize(1);
+
+    
+    tft.setTextColor(0xf7be);
     tft.drawRoundRect(30, 30, 100, 70, 8, 0x2d13);
     tft.fillRoundRect(30, 30, 100, 23, 8, 0x2d13);
     tft.setCursor(35,40);
     tft.setFont(&FreeSans9pt7b);
     tft.println("RideHeight");
+    
 
     tft.setFont(&FreeMonoBoldOblique9pt7b);
     tft.setCursor(40,79);
@@ -106,49 +118,48 @@ void setup() {
     tft.setCursor(65,79);
     tft.println("PROPO");
 
-    delay(5000);
+    delay(3000);
 
-    tft.fillRect(33,60,95,30,ST7735_BLACK);
-
-
-
-    
+    tft.fillRect(33,60,95,30,ST7735_BLACK);    
 
 }
 
 void loop() {
-
     
     currentAngle = readEncoderAngle();
 
     if(digitalRead(ButtonPin) == LOW){
         initialAngle = readEncoderAngle();
-        isReferenceSet = true;
-       
+        EEPROM.put(2,initialAngle);
+        isReferenceSet = true;       
     }
 
     if(isReferenceSet == true){
-        relativeAngle = currentAngle - initialAngle;
+      relativeAngle = currentAngle - initialAngle;
+      float rerativeAngleRad = radians(relativeAngle);
+      height = proveLength * tan(rerativeAngleRad) + 5.0f;
 
-          if(relativeAngle > 1){
-    height = -1.346 * ((currentAngle - 360.0) - initialAngle);
-    }else{
-    height = -1.346 * relativeAngle;
-    }
+      if(height < minHeight){
+        height = minHeight;
+      }
+      if(height > maxHeight){
+        height = maxHeight;
+      }
 
-    // height = height + 3.0;
-    if(height < -5.0f){
-    height = 0.0;
+      smoothHeight = height; 
+    
+    
+    /*
+    if(height < 1.9f){
+    height = 1.9;
     }
     if(height > 50.0){
-    height = 0.0;
-    }
-
-     height = height + 5.00f;
-     
-     smoothHeight = smoothingFactor * height +( 1.0 - smoothingFactor) * smoothHeight;
+    height = 50.0;
+    } 
+    */
 
     }
+    
 
     if(abs(smoothHeight - previousHeight) > sleepValue){
         lastInteractionTime = millis();
@@ -179,9 +190,9 @@ void loop() {
             }
             
             tft.print(heightText[0]);
-            // tft.print(currentText[1]);
+            // tft.print(currentText[1]);                       
                          
-                
+              
         } 
         if (heightText[1] != previousText[1]){
             tft.fillRect(67,56,40,41,ST7735_BLACK);
@@ -211,50 +222,30 @@ void loop() {
     int BattValue = getBatteryRaw();
 
 
-    if(sleepMode == 0){
-        if(BattValue > batteryThreshold){
-            digitalWrite(GreemLed,HIGH);
-            digitalWrite(RedLed,LOW);
-        }else{
-            digitalWrite(GreemLed,LOW);
-            digitalWrite(RedLed,HIGH);
-        }
-    }else{
-        if(BattValue > batteryThreshold){
-        if(GreenLedState){
-            if(currentMillis - previousMillis >= LedOnTime){
+    if(sleepMode == 1){
                 GreenLedState = false;
-                digitalWrite(GreemLed , LOW);
-                previousMillis = currentMillis;
-            }
-        }else{
-            if(currentMillis - previousMillis >= LedOffTime){
+                                
+                if(fadeDirectionUp){
+                    fadeValue += fadeAmount;
+                    if(fadeValue >= 255){
+                        fadeValue = 255;
+                        fadeDirectionUp = false;
+                    }
+                }else{
+                    fadeValue -= fadeAmount;
+                    if(fadeValue <= 0){
+                        fadeValue = 0;
+                        fadeDirectionUp = true;
+                    }
+                }
+                analogWrite(GreenLed,fadeValue);
+            }else{
                 GreenLedState = true;
-                digitalWrite(GreemLed , HIGH);
-                previousMillis = currentMillis;
-            
-            }
-        }
-    }else{
-        if(RedLedState){
-            if(currentMillis - previousMillis >= LedOnTime){
-                RedLedState = false;
-                digitalWrite(RedLed , LOW);
-                previousMillis = currentMillis;
-            }
-        }else{
-            if(currentMillis - previousMillis >= LedOffTime){
-                RedLedState = true;
-                digitalWrite(RedLed , HIGH);
-                previousMillis = currentMillis;
-            
-            }
-        }
-    }
+                analogWrite(GreenLed , 255);            
+            }   
+        
 
-    }
-
-
-  delay(50);
+    delay(50);
 }
+
 
