@@ -38,6 +38,7 @@ uint16_t maxAngle = 0x0400;
 
 bool isReferenceSet = false;
 bool sleepMode = 0;
+static float heightForSleep = 0.0f;
 bool GreenLedState = false;
 bool RedLedState = false;
 float currentAngle = 0;
@@ -76,16 +77,18 @@ void setMaxAngle(uint16_t maxAngle);
 
 
 void setup() {
-
+/*
     if(EEPROM.read(0) != 0xAA){
         EEPROM.write(0,0xAA);
         EEPROM.write(1,0);
         float defaultAngle = 0.0f;
         EEPROM.put(2,defaultAngle);
-    }    
-
+    }
+  */  
+    restoreZeroPositionFromEEPROM();
     EEPROM.get(2,initialAngle);
     isReferenceSet = true;
+
 
     Wire.begin();
     Wire.setClock(400000);
@@ -129,7 +132,10 @@ void loop() {
     currentAngle = readEncoderAngle();
 
     if(digitalRead(ButtonPin) == LOW){
-        initialAngle = readEncoderAngle();
+        float angle = readEncoderAngle();
+        initialAngle = angle;
+
+        saveCurrentZeroPositionToEEPROM();
         EEPROM.put(2,initialAngle);
         isReferenceSet = true;       
     }
@@ -161,17 +167,6 @@ void loop() {
     }
     
 
-    if(abs(smoothHeight - previousHeight) > sleepValue){
-        lastInteractionTime = millis();
-    }
-
-    if(millis() - lastInteractionTime > inactivityThreshold){
-        digitalWrite(TFT_POWER_PIN,LOW);
-        sleepMode = 1;
-    } else {
-        digitalWrite(TFT_POWER_PIN, HIGH);
-        sleepMode = 0;
-    }
 
     if(smoothHeight != previousHeight){
         char heightText[10],previousText[10];
@@ -213,10 +208,22 @@ void loop() {
 
       }
         previousHeight = smoothHeight;
-        lastUpdateTime = millis();
-        digitalWrite(TFT_POWER_PIN,HIGH);
-        
+                
     }
+
+    if(abs(smoothHeight - heightForSleep) > sleepValue){
+        lastInteractionTime = millis();
+        heightForSleep = smoothHeight;
+    }
+
+    if(millis() - lastInteractionTime > inactivityThreshold){
+        digitalWrite(TFT_POWER_PIN,LOW);
+        sleepMode = 1;
+    } else {
+        digitalWrite(TFT_POWER_PIN, HIGH);
+        sleepMode = 0;
+    }
+
 
     unsigned long currentMillis = millis();
     int BattValue = getBatteryRaw();
@@ -227,8 +234,8 @@ void loop() {
                                 
                 if(fadeDirectionUp){
                     fadeValue += fadeAmount;
-                    if(fadeValue >= 255){
-                        fadeValue = 255;
+                    if(fadeValue >= 180){
+                        fadeValue = 180;
                         fadeDirectionUp = false;
                     }
                 }else{
@@ -241,7 +248,7 @@ void loop() {
                 analogWrite(GreenLed,fadeValue);
             }else{
                 GreenLedState = true;
-                analogWrite(GreenLed , 255);            
+                analogWrite(GreenLed , 180);            
             }   
         
 

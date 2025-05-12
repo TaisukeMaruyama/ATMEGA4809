@@ -12,5 +12,8 @@
 void setZeroPosition(uint16_t zeroPosition);
 void setMaxAngle(uint16_t maxAngle);
 float readEncoderAngle();
+void saveCurrentZeroPositionToEEPROM();
+void restoreZeroPositionFromEEPROM();
+
 
 #endif
