@@ -105,20 +105,13 @@ void setup() {
     tft.fillScreen(ST7735_BLACK);
     tft.setRotation(1);
     tft.setTextSize(1);
-
+  
     
     tft.setTextColor(0xf7be);
-    tft.drawRoundRect(30, 30, 100, 70, 8, 0x2d13);
-    tft.fillRoundRect(30, 30, 100, 23, 8, 0x2d13);
-    tft.setCursor(35,40);
-    tft.setFont(&FreeSans9pt7b);
-    tft.println("RideHeight");
-    
-
     tft.setFont(&FreeMonoBoldOblique9pt7b);
-    tft.setCursor(40,79);
+    tft.setCursor(40,70);
     tft.println("KO");
-    tft.setCursor(65,79);
+    tft.setCursor(65,70);
     tft.println("PROPO");
 
     delay(3000);
@@ -128,6 +121,30 @@ void setup() {
 }
 
 void loop() {
+
+    int BattValue = getBatteryRaw();
+
+    static bool prevBatteryGood = false;
+    bool batteryGood = (BattValue > batteryThreshold);
+
+    if(batteryGood != prevBatteryGood){
+        if(batteryGood == true){
+        tft.drawRoundRect(30, 30, 100, 70, 8, 0x2d13);
+        tft.fillRoundRect(30, 30, 100, 23, 8, 0x2d13);        
+    }else{
+        tft.drawRoundRect(30, 30, 100, 70, 8, 0xe003);
+        tft.fillRoundRect(30, 30, 100, 23, 8, 0xe003);   
+    }
+
+    tft.setCursor(35,45);
+    tft.setFont(&FreeSans9pt7b);
+    tft.setTextColor(0xf7be);
+    tft.println("RideHeight");
+
+    prevBatteryGood = batteryGood;
+}
+
+
     
     currentAngle = readEncoderAngle();
 
@@ -226,7 +243,6 @@ void loop() {
 
 
     unsigned long currentMillis = millis();
-    int BattValue = getBatteryRaw();
 
 
     if(sleepMode == 1){
