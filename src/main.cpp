@@ -10,7 +10,7 @@
 #include <Fonts/FreeMonoBoldOblique9pt7b.h>
 #include <EEPROM.h>
 
-#define GreenLed 16
+#define GreenLed 16 //powerLed
 
 #define TFT_CS  7
 #define TFT_DC  10
@@ -29,18 +29,17 @@ const int ButtonPin = 12;
 #define AS5600_MPOS 0x03
 #define AS5600_MANG 0x05
 uint16_t zeroPosition = 0x0000;
-uint16_t maxAngle = 0x0400;
+uint16_t maxAngle = 0x0400; //maxAngle 90deg
 
 
 #define AS5600_AS5601_DEV_ADDRESS 0x36
 #define AS5600_AS5601_REG_RAW_ANGLE 0x0C
-#define DEG_TO_RAD 0.0174532925
+#define DEG_TO_RAD 0.0174532925 
 
 bool isReferenceSet = false;
 bool sleepMode = 0;
 static float heightForSleep = 0.0f;
 bool GreenLedState = false;
-bool RedLedState = false;
 float currentAngle = 0;
 float previousHeight = -1;
 float initialAngle = 0;
@@ -50,7 +49,7 @@ const float minHeight = 1.9f;
 const float maxHeight = 50.0f;
 float height = 0.0;
 float smoothHeight = 0.0;
-const float smoothingFactor = 0.7f;
+const float smoothingFactor = 0.7f; //RC Fillter
 unsigned long lastUpdateTime = 0;
 unsigned long previousMillis = 0;
 int LedOnTime = 20;
@@ -77,17 +76,11 @@ void setMaxAngle(uint16_t maxAngle);
 
 
 void setup() {
-/*
-    if(EEPROM.read(0) != 0xAA){
-        EEPROM.write(0,0xAA);
-        EEPROM.write(1,0);
-        float defaultAngle = 0.0f;
-        EEPROM.put(2,defaultAngle);
-    }
-  */  
     restoreZeroPositionFromEEPROM();
     EEPROM.get(2,initialAngle);
     isReferenceSet = true;
+
+    setMaxAngle(maxAngle);
 
 
     Wire.begin();
@@ -96,8 +89,6 @@ void setup() {
     pinMode(ButtonPin,INPUT_PULLUP);
     pinMode(TFT_POWER_PIN,OUTPUT);
     digitalWrite(TFT_POWER_PIN,HIGH);
-
-    // pinMode(GreenLed, OUTPUT);
 
     
     tft.initR(INITR_GREENTAB);
