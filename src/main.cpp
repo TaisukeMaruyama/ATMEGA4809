@@ -112,25 +112,9 @@ void setup() {
 
 void loop() {
 
-    // battery indicate green or red //
-    int BattValue = getBatteryRaw();
-    bool batteryGood = (BattValue > batteryThreshold);
-    static bool prevBatteryGood =!batteryGood; 
+    // battery config
+    updateBatteryStatus(tft);
 
-    if(batteryGood != prevBatteryGood){
-        uint16_t frameColor = batteryGood ? 0x2d13 : 0xe003;        
-        tft.drawRoundRect(30, 30, 100, 70, 8, frameColor); 
-        tft.fillRoundRect(30, 30, 100, 23, 8, frameColor); 
-        prevBatteryGood = batteryGood;       
-    }
-
-    tft.setCursor(35,45);
-    tft.setFont(&FreeSans9pt7b);
-    tft.setTextColor(0xf7be);
-    tft.println("RideHeight");
-
-   
-    
 
     //height calucurate   
     currentAngle = readEncoderAngle();
