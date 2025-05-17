@@ -1,5 +1,29 @@
 #include "encoder.h"
 #include <EEPROM.h>
+#include <Wire.h>
+#include <math.h>
+
+// AS5600 register //
+#define AS5600_AS5601_DEV_ADDRESS 0x36
+#define AS5600_AS5601_REG_RAW_ANGLE 0x0C
+#define AS5600_ZMC0 0x00
+#define AS5600_ZPOS 0x01
+#define AS5600_MPOS 0x03
+#define AS5600_MANG 0x05
+
+bool isReferenceSet = false;
+float currentAngle = 0;
+float previousHeight = -1;
+float initialAngle = 0;
+float relativeAngle = 0;
+const float proveLength = 80.68612f;
+const float caribHeight = 5.0f;
+const float minHeight = 1.9f;
+const float maxHeight = 50.0f;
+float height = 0.0;
+float smoothHeight = 0.0;
+const float smoothingFactor = 0.7f; //RC Fillter
+
 
 void setZeroPosition(uint16_t zeroPosition) {
     Wire.beginTransmission(AS5600_AS5601_DEV_ADDRESS);
@@ -51,3 +75,28 @@ void restoreZeroPositionFromEEPROM(){
     EEPROM.get(0,rawAngle);
     setZeroPosition(rawAngle);
 }
+
+void setInitialAngleFromSensor(){
+    initialAngle = readEncoderAngle();
+    EEPROM.put(2,initialAngle);
+    isReferenceSet = true;  
+}
+
+float updateHeight(){
+    if(!isReferenceSet) return 0.0f;
+    currentAngle = readEncoderAngle();
+    float relativeAngle = currentAngle - initialAngle;
+    float relativeRad = radians(relativeAngle);
+    height = proveLength * tan(relativeRad) + caribHeight;
+
+    if(height < minHeight){
+        height = minHeight;
+    }
+    if(height > maxHeight){
+        height = maxHeight;
+    }     
+
+    return height;
+
+}
+

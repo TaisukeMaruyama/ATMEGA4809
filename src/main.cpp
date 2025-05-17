@@ -36,17 +36,6 @@ uint16_t maxAngle = 0x0400; //maxAngle 90deg
 #define AS5600_AS5601_REG_RAW_ANGLE 0x0C
 
 // height variable //
-bool isReferenceSet = false;
-float currentAngle = 0;
-float previousHeight = -1;
-float initialAngle = 0;
-float relativeAngle = 0;
-const float proveLength = 80.68612f;
-const float minHeight = 1.9f;
-const float maxHeight = 50.0f;
-float height = 0.0;
-float smoothHeight = 0.0;
-const float smoothingFactor = 0.7f; //RC Fillter
 
 // power LED variable //
 bool GreenLedState = false;
@@ -109,40 +98,20 @@ void loop() {
 
 
     //height calucurate   
-    currentAngle = readEncoderAngle();
-
      //carib calucrate 
      if(digitalRead(ButtonPin) == LOW){
-        float angle = readEncoderAngle();
-        initialAngle = angle;
+        setInitialAngleFromSensor();
         saveCurrentZeroPositionToEEPROM();
-        EEPROM.put(2,initialAngle);
-        isReferenceSet = true;       
       }
-
-    // height calucrate
-    if(isReferenceSet == true){
-      relativeAngle = currentAngle - initialAngle;
-      float rerativeAngleRad = radians(relativeAngle);
-      height = proveLength * tan(rerativeAngleRad) + 5.0f;
-     // height crop
-     
-      if(height < minHeight){
-        height = minHeight;
-      }
-      if(height > maxHeight){
-        height = maxHeight;
-      }
-        
-
-      smoothHeight = height; 
-    }
     
+      float height = updateHeight();
+
+   
 
     // anti flicker    
-    if(smoothHeight != previousHeight){
+    if(height != previousHeight){
         char heightText[10],previousText[10];
-        dtostrf(smoothHeight,4,1,heightText);
+        dtostrf(height,4,1,heightText);
         dtostrf(previousHeight,4,1,previousText);
 
         bool isSingleDigit = (heightText[1] == '.');
@@ -174,11 +143,11 @@ void loop() {
                 tft.setCursor(95,87);
             tft.print(heightText[3]);
         }
-        previousHeight = smoothHeight;
+        previousHeight = height;
     }
 
     // sleep control
-    updateSleepStatus(smoothHeight, TFT_POWER_PIN);
+    updateSleepStatus(height, TFT_POWER_PIN);
     handleSleepLED(GreenLed);        
 
     delay(50);

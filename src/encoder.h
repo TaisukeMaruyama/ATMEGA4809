@@ -9,11 +9,18 @@
 #define AS5600_ZPOS 0x01
 #define AS5600_MANG 0x05
 
+extern float initialAngle;
+extern float previousHeight;
+extern bool isReferenceSet;
+
 void setZeroPosition(uint16_t zeroPosition);
 void setMaxAngle(uint16_t maxAngle);
 float readEncoderAngle();
 void saveCurrentZeroPositionToEEPROM();
 void restoreZeroPositionFromEEPROM();
+void setInitialAngleFromSensor();
+void loadInitialAngleFromEEPROM();
+float updateHeight();
 
 
 #endif
