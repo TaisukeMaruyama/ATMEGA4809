@@ -61,7 +61,7 @@ const unsigned long inactivityThreshold = 60000;
 const float sleepValue = 1.0;
 
 // battery variable
-int batteryThreshold = 340;
+int batteryThreshold = 290;
 
 // prototype //
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
@@ -114,16 +114,14 @@ void loop() {
 
     // battery indicate green or red //
     int BattValue = getBatteryRaw();
-    static bool prevBatteryGood = false;
     bool batteryGood = (BattValue > batteryThreshold);
+    static bool prevBatteryGood =!batteryGood; 
 
     if(batteryGood != prevBatteryGood){
-        if(batteryGood == true){
-        tft.drawRoundRect(30, 30, 100, 70, 8, 0x2d13); //green indicate
-        tft.fillRoundRect(30, 30, 100, 23, 8, 0x2d13);        
-    }else{
-        tft.drawRoundRect(30, 30, 100, 70, 8, 0xe003); //red indicate
-        tft.fillRoundRect(30, 30, 100, 23, 8, 0xe003);   
+        uint16_t frameColor = batteryGood ? 0x2d13 : 0xe003;        
+        tft.drawRoundRect(30, 30, 100, 70, 8, frameColor); 
+        tft.fillRoundRect(30, 30, 100, 23, 8, frameColor); 
+        prevBatteryGood = batteryGood;       
     }
 
     tft.setCursor(35,45);
@@ -131,8 +129,8 @@ void loop() {
     tft.setTextColor(0xf7be);
     tft.println("RideHeight");
 
-    prevBatteryGood = batteryGood;
-    }
+   
+    
 
     //height calucurate   
     currentAngle = readEncoderAngle();
@@ -151,13 +149,15 @@ void loop() {
       relativeAngle = currentAngle - initialAngle;
       float rerativeAngleRad = radians(relativeAngle);
       height = proveLength * tan(rerativeAngleRad) + 5.0f;
-     // height crop   
+     // height crop
+     
       if(height < minHeight){
         height = minHeight;
       }
       if(height > maxHeight){
         height = maxHeight;
       }
+        
 
       smoothHeight = height; 
     }
