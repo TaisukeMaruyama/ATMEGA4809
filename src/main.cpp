@@ -5,6 +5,7 @@
 #include <Wire.h>
 #include "encoder.h"
 #include "batt.h"
+#include "sleep.h"
 #include <Fonts/FreeSans18pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeMonoBoldOblique9pt7b.h>
@@ -36,7 +37,6 @@ uint16_t maxAngle = 0x0400; //maxAngle 90deg
 
 // height variable //
 bool isReferenceSet = false;
-static float heightForSleep = 0.0f;
 float currentAngle = 0;
 float previousHeight = -1;
 float initialAngle = 0;
@@ -50,15 +50,7 @@ const float smoothingFactor = 0.7f; //RC Fillter
 
 // power LED variable //
 bool GreenLedState = false;
-int fadeValue = 0;
-int fadeAmount = 10;
-bool fadeDirectionUp = true;
 
-// sleep variable //
-bool sleepMode = 0;
-unsigned long lastInteractionTime = 0;
-const unsigned long inactivityThreshold = 60000;
-const float sleepValue = 1.0;
 
 // battery variable
 int batteryThreshold = 290;
@@ -112,7 +104,7 @@ void setup() {
 
 void loop() {
 
-    // battery config
+    // battery survey
     updateBatteryStatus(tft);
 
 
@@ -186,43 +178,8 @@ void loop() {
     }
 
     // sleep control
-    if(abs(smoothHeight - heightForSleep) > sleepValue){
-        lastInteractionTime = millis();
-        heightForSleep = smoothHeight;
-    }
-
-    if(millis() - lastInteractionTime > inactivityThreshold){
-        digitalWrite(TFT_POWER_PIN,LOW);
-        sleepMode = 1;
-    } else {
-        digitalWrite(TFT_POWER_PIN, HIGH);
-        sleepMode = 0;
-    }
-
-    unsigned long currentMillis = millis();
-
-    if(sleepMode == 1){
-                GreenLedState = false;
-                                
-                if(fadeDirectionUp){
-                    fadeValue += fadeAmount;
-                    if(fadeValue >= 180){
-                        fadeValue = 180;
-                        fadeDirectionUp = false;
-                    }
-                }else{
-                    fadeValue -= fadeAmount;
-                    if(fadeValue <= 0){
-                        fadeValue = 0;
-                        fadeDirectionUp = true;
-                    }
-                }
-                analogWrite(GreenLed,fadeValue);
-            }else{
-                GreenLedState = true;
-                analogWrite(GreenLed , 180);            
-            }   
-        
+    updateSleepStatus(smoothHeight, TFT_POWER_PIN);
+    handleSleepLED(GreenLed);        
 
     delay(50);
 }
