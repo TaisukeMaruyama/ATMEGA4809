@@ -5,7 +5,7 @@
 #include <Fonts/FreeSans9pt7b.h>
 
 #define BattPin A11
-extern int batteryThreshold;
+int batteryThreshold = 290;
 
 int getBatteryRaw(){
     return analogRead(BattPin);

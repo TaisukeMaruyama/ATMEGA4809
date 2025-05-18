@@ -27,9 +27,6 @@ const int ButtonPin = 12;
 // power LED variable //
 bool GreenLedState = false;
 
-// battery variable
-int batteryThreshold = 290;
-
 // prototype //
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 float readEncoderAngle();
@@ -39,7 +36,7 @@ void setMaxAngle(uint16_t maxAngle);
 
 void setup() {
 
-    initEncorder();
+    initEncorder(); //encorder max angle define
 
     pinMode(ButtonPin,INPUT_PULLUP);
     pinMode(TFT_POWER_PIN,OUTPUT);
