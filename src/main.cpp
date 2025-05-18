@@ -35,6 +35,9 @@ uint16_t maxAngle = 0x0400; //maxAngle 90deg
 #define AS5600_AS5601_DEV_ADDRESS 0x36
 #define AS5600_AS5601_REG_RAW_ANGLE 0x0C
 
+
+#define DOT_FONT &FreeSans18pt7b
+
 // height variable //
 
 // power LED variable //
@@ -133,16 +136,29 @@ void loop() {
             tft.setCursor(68,87);
             tft.print(heightText[1]);            
         }
-        tft.setFont(&FreeSans18pt7b);
+
+        if(heightText[2] != previousText[2]){
+            tft.fillRect(84,56,5,41,ST7735_BLACK);
+            tft.setFont(&FreeSans18pt7b);
             tft.setCursor(85,87);
-        tft.print(heightText[2]);   
+            tft.print(heightText[2]);
+        
+        }
     
         if(heightText[3] != previousText[3]){
             tft.fillRect(94,56,23,41,ST7735_BLACK);
             tft.setFont(&FreeSans18pt7b);
-                tft.setCursor(95,87);
+            tft.setCursor(95,87);
             tft.print(heightText[3]);
         }
+
+        
+        tft.fillRect(86,60,5,30,ST7735_BLACK);
+        tft.setFont(DOT_FONT);
+        tft.setCursor(87,85);
+        tft.print('.');
+        
+
         previousHeight = height;
     }
 
