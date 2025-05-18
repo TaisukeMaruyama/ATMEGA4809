@@ -21,6 +21,7 @@ void restoreZeroPositionFromEEPROM();
 void setInitialAngleFromSensor();
 void loadInitialAngleFromEEPROM();
 float updateHeight();
+void initEncorder();
 
 
 #endif
