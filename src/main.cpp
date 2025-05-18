@@ -6,6 +6,7 @@
 #include "encoder.h"
 #include "batt.h"
 #include "sleep.h"
+#include "display.h"
 #include <Fonts/FreeSans18pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeMonoBoldOblique9pt7b.h>
@@ -34,11 +35,6 @@ uint16_t zeroPosition = 0x0000;
 uint16_t maxAngle = 0x0400; //maxAngle 90deg
 #define AS5600_AS5601_DEV_ADDRESS 0x36
 #define AS5600_AS5601_REG_RAW_ANGLE 0x0C
-
-
-#define DOT_FONT &FreeSans18pt7b
-
-// height variable //
 
 // power LED variable //
 bool GreenLedState = false;
@@ -98,9 +94,7 @@ void loop() {
 
     // battery survey
     updateBatteryStatus(tft);
-
-
-    //height calucurate   
+       
      //carib calucrate 
      if(digitalRead(ButtonPin) == LOW){
         setInitialAngleFromSensor();
@@ -108,59 +102,10 @@ void loop() {
       }
     
       float height = updateHeight();
+ 
 
-   
-
-    // anti flicker    
-    if(height != previousHeight){
-        char heightText[10],previousText[10];
-        dtostrf(height,4,1,heightText);
-        dtostrf(previousHeight,4,1,previousText);
-
-        bool isSingleDigit = (heightText[1] == '.');
-        
-        if(heightText[0] != previousText[0]){
-            tft.fillRect(33,56,38,41,ST7735_BLACK);
-            tft.setFont(&FreeSans18pt7b);
-            if(isSingleDigit){
-            tft.setCursor(60,87);
-            }else{
-            tft.setCursor(46,87);
-            }          
-            tft.print(heightText[0]);                       
-        } 
-        
-        if (heightText[1] != previousText[1]){
-            tft.fillRect(67,56,40,41,ST7735_BLACK);
-            tft.setFont(&FreeSans18pt7b);
-            tft.setCursor(68,87);
-            tft.print(heightText[1]);            
-        }
-
-        if(heightText[2] != previousText[2]){
-            tft.fillRect(84,56,5,41,ST7735_BLACK);
-            tft.setFont(&FreeSans18pt7b);
-            tft.setCursor(85,87);
-            tft.print(heightText[2]);
-        
-        }
-    
-        if(heightText[3] != previousText[3]){
-            tft.fillRect(94,56,23,41,ST7735_BLACK);
-            tft.setFont(&FreeSans18pt7b);
-            tft.setCursor(95,87);
-            tft.print(heightText[3]);
-        }
-
-        
-        tft.fillRect(86,60,5,30,ST7735_BLACK);
-        tft.setFont(DOT_FONT);
-        tft.setCursor(87,85);
-        tft.print('.');
-        
-
-        previousHeight = height;
-    }
+    // Dipslay print    
+    updateHeightDisplay(tft,height,previousHeight);
 
     // sleep control
     updateSleepStatus(height, TFT_POWER_PIN);
