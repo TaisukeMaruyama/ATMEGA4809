@@ -9,6 +9,7 @@
 
 void updateHeightDisplay(Adafruit_ST7735 &tft,float height, float &previousHeight){
         if(height != previousHeight){
+
         char heightText[10],previousText[10];
         dtostrf(height,4,1,heightText);
         dtostrf(previousHeight,4,1,previousText);
@@ -27,14 +28,14 @@ void updateHeightDisplay(Adafruit_ST7735 &tft,float height, float &previousHeigh
         } 
         
         if (heightText[1] != previousText[1]){
-            tft.fillRect(67,56,40,41,ST7735_BLACK);
+            tft.fillRect(67,56,28,41,ST7735_BLACK);
             tft.setFont(&FreeSans18pt7b);
             tft.setCursor(68,87);
             tft.print(heightText[1]);            
         }
 
         if(heightText[2] != previousText[2]){
-            tft.fillRect(84,56,5,41,ST7735_BLACK);
+            tft.fillRect(84,56,8,41,ST7735_BLACK);
             tft.setFont(&FreeSans18pt7b);
             tft.setCursor(85,87);
             tft.print(heightText[2]);
@@ -42,7 +43,7 @@ void updateHeightDisplay(Adafruit_ST7735 &tft,float height, float &previousHeigh
         }
     
         if(heightText[3] != previousText[3]){
-            tft.fillRect(94,56,23,41,ST7735_BLACK);
+            tft.fillRect(87,56,40,41,ST7735_BLACK);
             tft.setFont(&FreeSans18pt7b);
             tft.setCursor(95,87);
             tft.print(heightText[3]);
