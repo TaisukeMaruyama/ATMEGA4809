@@ -13,7 +13,7 @@
 
 bool isReferenceSet = false;
 float currentAngle = 0;
-float previousHeight = -1;
+float previousHeight = NAN;
 float initialAngle = 0;
 float relativeAngle = 0;
 const float proveLength = 80.68612f;
@@ -23,6 +23,24 @@ const float maxHeight = 50.0f;
 float height = 0.0;
 float smoothHeight = 0.0;
 const float smoothingFactor = 0.7f; //RC Fillter
+float scaleFactor = 1.394124f;
+float offset = 0.0f;
+
+void restoreCalibrationFromEEPROM(){
+    EEPROM.get(10,scaleFactor);
+    EEPROM.get(14,offset);
+    if(isnan(scaleFactor) || scaleFactor == 0){
+        scaleFactor = 1.394124f;
+        offset = 0.034143f + caribHeight;
+    }
+}
+
+void saveCalibrationToEEPROM(float newScale,float newOffset){
+    scaleFactor = newScale;
+    offset = newOffset;
+    EEPROM.put(10,newScale);
+    EEPROM.put(14,newOffset);
+}
 
 
 void setZeroPosition(uint16_t zeroPosition) {
@@ -86,8 +104,8 @@ float updateHeight(){
     if(!isReferenceSet) return 0.0f;
     currentAngle = readEncoderAngle();
     float relativeAngle = currentAngle - initialAngle;
-    float relativeRad = radians(relativeAngle);
-    height = proveLength * tan(relativeRad) + caribHeight;
+    // float relativeRad = radians(relativeAngle);
+    height =  scaleFactor * relativeAngle + caribHeight;
 
     if(height < minHeight){
         height = minHeight;

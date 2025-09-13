@@ -21,6 +21,10 @@ void restoreZeroPositionFromEEPROM();
 void setInitialAngleFromSensor();
 void loadInitialAngleFromEEPROM();
 float updateHeight();
+void calibrationMode();
+void restoreCalibrationFromEEPROM();
+
+void saveCalibrationToEEPROM(float newScale,float newOffset);
 
 
 #endif

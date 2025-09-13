@@ -31,7 +31,7 @@ const int ButtonPin = 12;
 #define AS5600_MPOS 0x03
 #define AS5600_MANG 0x05
 uint16_t zeroPosition = 0x0000;
-uint16_t maxAngle = 0x0400; //maxAngle 90deg
+uint16_t maxAngle = 0x0203; //maxAngle 45deg
 #define AS5600_AS5601_DEV_ADDRESS 0x36
 #define AS5600_AS5601_REG_RAW_ANGLE 0x0C
 
@@ -51,7 +51,17 @@ void setZeroPosition(uint16_t zeroPosition);
 void setMaxAngle(uint16_t maxAngle);
 
 
+// carib //
+float calibJigLow = 5.0f;
+float calibJigHeigh = 30.3f;
+
 void setup() {
+
+    // I2C settings
+    Wire.begin();
+    Wire.setClock(400000);
+
+    pinMode(ButtonPin,INPUT_PULLUP);
 
     // EEPROM settings
     restoreZeroPositionFromEEPROM();
@@ -62,11 +72,7 @@ void setup() {
     setMaxAngle(maxAngle);
 
 
-    // I2C settings
-    Wire.begin();
-    Wire.setClock(400000);
 
-    pinMode(ButtonPin,INPUT_PULLUP);
     pinMode(TFT_POWER_PIN,OUTPUT);
     digitalWrite(TFT_POWER_PIN,HIGH);
 
@@ -86,27 +92,99 @@ void setup() {
     tft.println("PROPO");
 
     delay(3000);
-
     tft.fillRect(33,60,95,30,ST7735_BLACK);    
 
+
+}
+
+void(*resetFunc)(void) = 0;
+
+void calibrationMode(){
+    float zeroPosition = 0; //5.0mm
+    float secondPosition = 0; //30.2mm
+
+    tft.fillScreen(ST7735_BLACK);
+    tft.setCursor(10,40);
+    tft.setTextColor(ST7735_WHITE);
+    tft.println("set 5.0mm &");
+    tft.setCursor(10,60);
+    tft.println("PressBTN");
+
+    while (digitalRead(ButtonPin)==LOW);    
+    while (digitalRead(ButtonPin) == HIGH);
+    
+    zeroPosition = readEncoderAngle();
+    setInitialAngleFromSensor();
+    saveCurrentZeroPositionToEEPROM();
+
+    tft.fillScreen(ST7735_BLACK);
+    tft.setCursor(10,40);
+    tft.println("NEXT -> 30.2mm");
+
+    while (digitalRead(ButtonPin) ==LOW);
+    while (digitalRead(ButtonPin) ==HIGH);
+    secondPosition = readEncoderAngle();
+
+    float deltaAngle = secondPosition - zeroPosition;
+    float deltaHeight = calibJigHeigh - calibJigLow;
+    float newScale = deltaHeight / deltaAngle;
+    float newOffset = zeroPosition - newScale *(zeroPosition - initialAngle);
+
+    saveCalibrationToEEPROM(newScale,newOffset);
+
+    tft.fillScreen(ST7735_BLACK);
+    tft.setCursor(10,40);
+    tft.println("complete");
+    tft.setCursor(10,55);
+    tft.println(newScale,6);
+    tft.setCursor(10,70);
+    tft.print(newOffset);
+
+    delay(5000);
+
+    resetFunc();    
+    
 }
 
 void loop() {
 
+    static unsigned long buttonPuressStart = 0;
+    static bool buttonPressed = false;
+
+    if(digitalRead(ButtonPin) == LOW){
+        if(!buttonPressed){
+            buttonPuressStart = millis();
+            buttonPressed = true;
+        }
+
+        if(buttonPressed && (millis() - buttonPuressStart >= 10000)){
+            calibrationMode();
+            buttonPressed = false;
+        }
+    }else{
+        if(buttonPressed){
+            unsigned long pressDuration = millis() - buttonPuressStart;
+
+            if(pressDuration < 10000){
+                setInitialAngleFromSensor();
+                saveCurrentZeroPositionToEEPROM();
+            }
+            buttonPressed = false;
+        }    
+    }
+
+
     // battery survey
     updateBatteryStatus(tft);
 
-
-    //height calucurate   
+    /*
      //carib calucrate 
      if(digitalRead(ButtonPin) == LOW){
         setInitialAngleFromSensor();
         saveCurrentZeroPositionToEEPROM();
       }
-    
-      float height = updateHeight();
-
-   
+    */
+      float height = updateHeight();   
 
     // anti flicker    
     if(height != previousHeight){
@@ -124,7 +202,7 @@ void loop() {
             }else{
             tft.setCursor(46,87);
             }          
-            tft.print(heightText[0]);                       
+                tft.print(heightText[0]);
         } 
         
         if (heightText[1] != previousText[1]){
@@ -133,9 +211,13 @@ void loop() {
             tft.setCursor(68,87);
             tft.print(heightText[1]);            
         }
-        tft.setFont(&FreeSans18pt7b);
+
+        if(heightText[2] != previousText[2]){
+            tft.fillRect(84,56,23,41,ST7735_BLACK);
+        }
+            tft.setFont(&FreeSans18pt7b);
             tft.setCursor(85,87);
-        tft.print(heightText[2]);   
+            tft.print(heightText[2]);
     
         if(heightText[3] != previousText[3]){
             tft.fillRect(94,56,23,41,ST7735_BLACK);
