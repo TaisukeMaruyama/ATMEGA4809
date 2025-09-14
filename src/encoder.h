@@ -12,6 +12,7 @@
 extern float initialAngle;
 extern float previousHeight;
 extern bool isReferenceSet;
+extern float newScale;
 
 void setZeroPosition(uint16_t zeroPosition);
 void setMaxAngle(uint16_t maxAngle);

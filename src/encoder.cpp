@@ -11,6 +11,7 @@
 #define AS5600_MPOS 0x03
 #define AS5600_MANG 0x05
 
+// parameter //
 bool isReferenceSet = false;
 float currentAngle = 0;
 float previousHeight = NAN;
@@ -42,6 +43,18 @@ void saveCalibrationToEEPROM(float newScale,float newOffset){
     EEPROM.put(14,newOffset);
 }
 
+const uint16_t defaultMaxAngle = 0x0400;
+
+void initEncorder(){
+    Wire.begin();
+    Wire.setClock(400000);
+    restoreZeroPositionFromEEPROM();
+
+    EEPROM.get(2,initialAngle);
+    isReferenceSet = true;
+
+    setMaxAngle(defaultMaxAngle);
+}
 
 void setZeroPosition(uint16_t zeroPosition) {
     Wire.beginTransmission(AS5600_AS5601_DEV_ADDRESS);

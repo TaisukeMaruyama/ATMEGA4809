@@ -5,7 +5,7 @@
 #include <Fonts/FreeSans9pt7b.h>
 
 #define BattPin A11
-extern int batteryThreshold;
+int batteryThreshold = 290;
 
 int getBatteryRaw(){
     return analogRead(BattPin);
@@ -23,7 +23,7 @@ void updateBatteryStatus(Adafruit_ST7735 &tft){
         prevBatteryGood = batteryGood;       
     }
 
-    tft.setCursor(35,45);
+    tft.setCursor(35,47);
     tft.setFont(&FreeSans9pt7b);
     tft.setTextColor(0xf7be);
     tft.println("RideHeight");
