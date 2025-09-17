@@ -61,6 +61,20 @@ void setup() {
 
     pinMode(ButtonPin,INPUT_PULLUP);
 
+    delay(100);
+    if(digitalRead(ButtonPin)==LOW){
+    pinMode(TFT_POWER_PIN,OUTPUT);
+    digitalWrite(TFT_POWER_PIN,HIGH);    
+    tft.initR(INITR_GREENTAB); //for greentab setting
+    tft.invertDisplay(true);
+    tft.fillScreen(ST7735_BLACK);
+    tft.setRotation(1);
+    tft.setTextSize(1);
+      
+    calibrationMode();         
+            
+    }
+
     // EEPROM settings
     restoreCalibrationFromEEPROM();
     restoreZeroPositionFromEEPROM();
@@ -164,25 +178,17 @@ void loop() {
 
     if(digitalRead(ButtonPin) == LOW){
         if(!buttonPressed){
-            buttonPuressStart = millis();
             buttonPressed = true;
-        }
-
-        if(buttonPressed && (millis() - buttonPuressStart >= 10000)){
-            calibrationMode();
-            buttonPressed = false;
-        }
+        }       
     }else{
         if(buttonPressed){
-            unsigned long pressDuration = millis() - buttonPuressStart;
-
-            if(pressDuration < 10000){
+            
                 setInitialAngleFromSensor();
                 saveCurrentZeroPositionToEEPROM();
             }
             buttonPressed = false;
-        }    
-    }
+    }    
+    
 
 
     // battery survey
