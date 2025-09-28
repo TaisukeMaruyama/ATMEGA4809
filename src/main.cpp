@@ -116,54 +116,86 @@ void setup() {
 void(*resetFunc)(void) = 0;
 
 void calibrationMode(){
-    float zeroPosition = 0; //5.0mm
-    float secondPosition = 0; //30.2mm
+
+    const int NUM_POINTS = 5;
+    float knownHeights[NUM_POINTS] = {2.5f,5.0f,16.0f,27.0f,38.0f};
+    float measuredAngles[NUM_POINTS];
 
     tft.setTextSize(1);
     tft.fillScreen(ST7735_BLACK);
     tft.setCursor(10,40);
     tft.setTextColor(ST7735_WHITE);
-    tft.println("set 5.0mm &");
+    tft.println("CalibrationMode");
     tft.setCursor(10,60);
     tft.println("PressBTN");
 
-    while (digitalRead(ButtonPin)==LOW);    
+    unsigned long pressStart = millis();
+    while (digitalRead(ButtonPin) == LOW)
+    {
+        if(millis() - pressStart > 5000){
+            break;
+        }    
+    }
+    while (digitalRead(ButtonPin) == HIGH);
+
+    for(int i=0; i<NUM_POINTS; i++){
+        tft.fillScreen(ST7735_BLACK);
+        tft.setCursor(10,40);
+        tft.print("set ");
+        tft.print(knownHeights[i],1);
+        tft.println("mm");
+    
+
+    if(i >= 2){
+        float sumX=0,sumY=0,sumXX=0,sumYY=0,sumXY=0;
+        for(int j=0; j<i;j++){
+            sumX += measuredAngles[j];
+            sumY += knownHeights[j];
+            sumXX += measuredAngles[j]*measuredAngles[j];
+            sumYY += knownHeights[j]*knownHeights[j];
+            sumXY += measuredAngles[j]*knownHeights[j];
+        }
+    
+    float n = i;
+    float r_num = n * sumXY - sumX*sumY;
+    float r_den = sqrt((n*sumXX - sumX*sumX)*(n*sumYY - sumY*sumY));
+    float r = (fabs(r_den)<1e-6)? 0.0 : r_num/r_den;
+
+    tft.setCursor(10,60);
+    tft.print("r= ");
+    tft.println(r,3);
+
+    }
+
+    while (digitalRead(ButtonPin) == LOW);
     while (digitalRead(ButtonPin) == HIGH);
     
-    zeroPosition = readEncoderAngle();
-    setInitialAngleFromSensor();
-    saveCurrentZeroPositionToEEPROM();
+    measuredAngles[i] = readEncoderAngle();
+}
 
-    tft.fillScreen(ST7735_BLACK);
-    tft.setCursor(10,40);
-    tft.println("NEXT -> 30.2mm");
+float sumX =0,sumY = 0,sumXX = 0,sumXY = 0;
+for(int i=0; i<NUM_POINTS; i++){
+    sumX += measuredAngles[i];
+    sumY += knownHeights[i];
+    sumXY += measuredAngles[i] * knownHeights[i];
+    sumXX += measuredAngles[i] * measuredAngles[i];
+}
+float denom = NUM_POINTS * sumXX - sumX * sumX;
+if(fabs(denom) < 1e-6){
+    newScale = 1.0f;    
+}else{
+    newScale = (NUM_POINTS * sumXY - sumX * sumY) / denom;    
+}
 
-    while (digitalRead(ButtonPin) ==LOW);
-    while (digitalRead(ButtonPin) ==HIGH);
-    secondPosition = readEncoderAngle();
+float newOffset = 0;
 
-    float deltaAngle = secondPosition - zeroPosition;
-    float deltaHeight = calibJigHeigh - calibJigLow;
-    newScale = deltaHeight / deltaAngle;
-    float newOffset = zeroPosition - newScale *(zeroPosition - initialAngle);
-
-    saveCalibrationToEEPROM(newScale,newOffset);
-
+saveCalibrationToEEPROM(newScale,newOffset);
     tft.fillScreen(ST7735_BLACK);
     tft.setCursor(10,40);
     tft.println("complete");
     tft.setCursor(10,55);
     tft.print("Scale :");
     tft.println(newScale,5);
-    tft.setCursor(10,70);
-    tft.print("Offset :");
-    tft.print(newOffset,5);
-    tft.setCursor(10,85);
-    tft.print("1stPos :");
-    tft.println(zeroPosition,5);
-    tft.setCursor(10,100);
-    tft.print("2ndPos :");
-    tft.println(secondPosition,5);
 
     delay(10000);
 
