@@ -144,11 +144,30 @@ void calibrationMode(){
         tft.print("set ");
         tft.print(knownHeights[i],1);
         tft.println("mm");
+    
+    while(digitalRead(ButtonPin)==LOW);
+    while(digitalRead(ButtonPin)==HIGH);
+
+    measuredAngles[i] = readEncoderAngle();
+
+    tft.fillScreen(ST7735_BLACK);
+    tft.setCursor(10,30);
+    tft.print("Height: ");
+    tft.print(knownHeights[i],3);
+    tft.println(" mm");
+    tft.setCursor(10,50);
+    tft.print("Angle: ");
+    tft.print(measuredAngles[i],5);
+    tft.println(" deg");
+    delay(1000);
+
     }
+
     
 /*
     if(i >= 2){
         float sumX=0,sumY=0,sumXX=0,sumYY=0,sumXY=0;
+
         for(int j=0; j<i;j++){
             sumX += measuredAngles[j];
             sumY += knownHeights[j];
