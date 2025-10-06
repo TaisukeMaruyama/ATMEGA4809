@@ -26,6 +26,7 @@ void calibrationMode();
 void restoreCalibrationFromEEPROM();
 
 void saveCalibrationToEEPROM(float newScale,float newOffset);
+float interpolateHeight(float angle);
 
 
 #endif

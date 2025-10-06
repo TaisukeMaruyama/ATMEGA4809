@@ -46,6 +46,27 @@ void saveCalibrationToEEPROM(float scale,float newOffset){
 
 const uint16_t defaultMaxAngle = 0x0400;
 
+float interpolateHeight(float angle){
+    const int NUM_POINTS = 5;
+    float knownAngles[NUM_POINTS];
+    float knownHeight[NUM_POINTS];
+
+    for(int i=0; i<NUM_POINTS; i++){
+        EEPROM.get(100+i*sizeof(float),knownAngles[i]);
+        EEPROM.get(200+i*sizeof(float),knownHeight[i]);
+    }
+    if(angle <= knownAngles[0]) return knownHeight[0];
+    if(angle >= knownAngles[NUM_POINTS - 1]) return knownHeight[NUM_POINTS -1];
+
+    for(int i=0; i<NUM_POINTS-1; i++){
+        if(angle >= knownAngles[i] && angle <= knownAngles[i+1]){
+            float t = (angle - knownAngles[i]) / (knownAngles[i+1] - knownAngles[i]);
+            return knownHeight[i] + t * (knownHeight[i+1] - knownHeight[i]);
+        }
+    }
+    return 0.0f;
+}
+
 void initEncorder(){
     Wire.begin();
     Wire.setClock(400000);
@@ -120,7 +141,7 @@ float updateHeight(){
     currentAngle = readEncoderAngle();
     float relativeAngle = currentAngle - initialAngle;
     // float relativeRad = radians(relativeAngle);
-    height =  newScale * relativeAngle + caribHeight;
+    height =  interpolateHeight(relativeAngle) + caribHeight;
 
     if(height < minHeight){
         height = minHeight;

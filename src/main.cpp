@@ -144,8 +144,9 @@ void calibrationMode(){
         tft.print("set ");
         tft.print(knownHeights[i],1);
         tft.println("mm");
+    }
     
-
+/*
     if(i >= 2){
         float sumX=0,sumY=0,sumXX=0,sumYY=0,sumXY=0;
         for(int j=0; j<i;j++){
@@ -172,30 +173,16 @@ void calibrationMode(){
     
     measuredAngles[i] = readEncoderAngle();
 }
+    */
 
-float sumX =0,sumY = 0,sumXX = 0,sumXY = 0;
 for(int i=0; i<NUM_POINTS; i++){
-    sumX += measuredAngles[i];
-    sumY += knownHeights[i];
-    sumXY += measuredAngles[i] * knownHeights[i];
-    sumXX += measuredAngles[i] * measuredAngles[i];
-}
-float denom = NUM_POINTS * sumXX - sumX * sumX;
-if(fabs(denom) < 1e-6){
-    newScale = 1.0f;    
-}else{
-    newScale = (NUM_POINTS * sumXY - sumX * sumY) / denom;    
+    EEPROM.put(100 + i * sizeof(float), measuredAngles[i]);
+    EEPROM.put(200 + i * sizeof(float), knownHeights[i]);
 }
 
-float newOffset = 0;
-
-saveCalibrationToEEPROM(newScale,newOffset);
     tft.fillScreen(ST7735_BLACK);
     tft.setCursor(10,40);
     tft.println("complete");
-    tft.setCursor(10,55);
-    tft.print("Scale :");
-    tft.println(newScale,5);
 
     delay(10000);
 
