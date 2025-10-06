@@ -27,6 +27,7 @@ const float smoothingFactor = 0.7f; //RC Fillter
 
 float scaleFactor = 1.394124f;
 float offset = 0.0f;
+float heightOffset = 0.0f;
 
 void restoreCalibrationFromEEPROM(){
     EEPROM.get(10,newScale);
@@ -55,9 +56,30 @@ float interpolateHeight(float angle){
         EEPROM.get(100+i*sizeof(float),knownAngles[i]);
         EEPROM.get(200+i*sizeof(float),knownHeight[i]);
     }
-    if(angle <= knownAngles[0]) return knownHeight[0];
-    if(angle >= knownAngles[NUM_POINTS - 1]) return knownHeight[NUM_POINTS -1];
 
+    for(int i=0; i<NUM_POINTS-1; i++){
+        for(int j=i+1; j<NUM_POINTS; j++){
+            if(knownAngles[i] > knownAngles[j]){
+                float tmpA = knownAngles[i];
+                knownAngles[i]=knownAngles[j];
+                knownAngles[j]=tmpA;
+                float tmpH = knownHeight[i];
+                knownHeight[i] = knownHeight[j];
+                knownHeight[j] = tmpH;
+            }
+        }
+    }
+
+    
+    if(angle <= knownAngles[0]){
+        float t = (angle - knownAngles[0])/ (knownAngles[1]-knownAngles[0]);
+        return knownHeight[0] + t * (knownHeight[1] - knownHeight[0]);
+    }
+    if(angle >= knownAngles[NUM_POINTS -1]){
+        float t = (angle - knownAngles[NUM_POINTS -2])/(knownAngles[NUM_POINTS - 1] - knownAngles[NUM_POINTS - 2]);
+        return knownHeight[NUM_POINTS -2]+t*(knownHeight[NUM_POINTS-1]-knownHeight[NUM_POINTS -2]);
+    } 
+   
     for(int i=0; i<NUM_POINTS-1; i++){
         if(angle >= knownAngles[i] && angle <= knownAngles[i+1]){
             float t = (angle - knownAngles[i]) / (knownAngles[i+1] - knownAngles[i]);
@@ -141,15 +163,17 @@ float updateHeight(){
     currentAngle = readEncoderAngle();
     float relativeAngle = currentAngle - initialAngle;
     // float relativeRad = radians(relativeAngle);
-    height =  interpolateHeight(relativeAngle) + caribHeight;
-
+    float rawHeight =  interpolateHeight(currentAngle);
+    height = rawHeight - heightOffset;
+    
+    /*
     if(height < minHeight){
         height = minHeight;
     }
     if(height > maxHeight){
         height = maxHeight;
     }     
-
+*/
     return height;
 
 }

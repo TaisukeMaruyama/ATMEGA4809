@@ -78,7 +78,8 @@ void setup() {
     // EEPROM settings
     restoreCalibrationFromEEPROM();
     restoreZeroPositionFromEEPROM();
-    EEPROM.get(2,initialAngle);
+    EEPROM.get(300,heightOffset);
+    if(isnan(heightOffset)) heightOffset = 0.0f;
     isReferenceSet = true;
 
     // AS5600 MaxAngle settings
@@ -156,10 +157,11 @@ void calibrationMode(){
     tft.print(knownHeights[i],3);
     tft.println(" mm");
     tft.setCursor(10,50);
+
     tft.print("Angle: ");
     tft.print(measuredAngles[i],5);
     tft.println(" deg");
-    delay(1000);
+    delay(3000);
 
     }
 
@@ -217,12 +219,18 @@ void loop() {
     if(digitalRead(ButtonPin) == LOW){
         if(!buttonPressed){
             buttonPressed = true;
+            float currentAngle = readEncoderAngle();
+            float measuredHeight = interpolateHeight(currentAngle);
+
+            const float referenceHeight = 5.0f;
+
+            heightOffset = measuredHeight - referenceHeight;
+            EEPROM.put(300,heightOffset);
+
         }       
     }else{
         if(buttonPressed){
             
-                setInitialAngleFromSensor();
-                saveCurrentZeroPositionToEEPROM();
             }
             buttonPressed = false;
     }    
@@ -240,8 +248,7 @@ void loop() {
         saveCurrentZeroPositionToEEPROM();
       }
     
-      float height = updateHeight();   
-
+      float height = updateHeight(); 
     updateHeightDisplay(tft,height,previousHeight);
 
     // sleep control
