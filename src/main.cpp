@@ -119,8 +119,12 @@ void(*resetFunc)(void) = 0;
 void calibrationMode(){
 
     const int NUM_POINTS = 5;
+    const int SAMPLE_COUNT = 30;
     float knownHeights[NUM_POINTS] = {2.5f,5.0f,16.0f,27.0f,38.0f};
     float measuredAngles[NUM_POINTS];
+    float sumAngle = 0.0f;
+    float minAngle = 999.0f;
+    float maxAngle = -999.0f;
 
     tft.setTextSize(1);
     tft.fillScreen(ST7735_BLACK);
@@ -149,52 +153,70 @@ void calibrationMode(){
     while(digitalRead(ButtonPin)==LOW);
     while(digitalRead(ButtonPin)==HIGH);
 
-    measuredAngles[i] = readEncoderAngle();
+    for(int s=0; s<SAMPLE_COUNT; s++){
+        float a = readEncoderAngle();
+        sumAngle += a;
+        if(a<minAngle) minAngle = a;
+        if(a>maxAngle) maxAngle = a;
+        delay(10);
+    }
+    float aveAngle = sumAngle/SAMPLE_COUNT;
+    measuredAngles[i] = aveAngle;
+
 
     tft.fillScreen(ST7735_BLACK);
-    tft.setCursor(10,30);
+    tft.setCursor(10,20);
     tft.print("Height: ");
     tft.print(knownHeights[i],3);
     tft.println(" mm");
-    tft.setCursor(10,50);
 
-    tft.print("Angle: ");
-    tft.print(measuredAngles[i],5);
+    tft.setCursor(10,40);
+    tft.print("AvgAngle: ");
+    tft.print(aveAngle,5);
     tft.println(" deg");
-    delay(3000);
+
+    tft.setCursor(10,55);
+    tft.print("MinAngle: ");
+    tft.print(minAngle,5);
+    tft.println(" deg");
+
+    tft.setCursor(10,70);
+    tft.print("MaxAngle: ");
+    tft.print(maxAngle,5);
+    tft.println(" deg");
+
+    while(digitalRead(ButtonPin)==LOW);
+    while(digitalRead(ButtonPin)==HIGH);
 
     }
 
-    
-/*
-    if(i >= 2){
-        float sumX=0,sumY=0,sumXX=0,sumYY=0,sumXY=0;
+//All Result show 
+tft.fillScreen(ST7735_BLACK);
+tft.setCursor(10,20);
+tft.print("All data collected");
+tft.setCursor(10,40);
+tft.print("Press to show");
 
-        for(int j=0; j<i;j++){
-            sumX += measuredAngles[j];
-            sumY += knownHeights[j];
-            sumXX += measuredAngles[j]*measuredAngles[j];
-            sumYY += knownHeights[j]*knownHeights[j];
-            sumXY += measuredAngles[j]*knownHeights[j];
-        }
-    
-    float n = i;
-    float r_num = n * sumXY - sumX*sumY;
-    float r_den = sqrt((n*sumXX - sumX*sumX)*(n*sumYY - sumY*sumY));
-    float r = (fabs(r_den)<1e-6)? 0.0 : r_num/r_den;
+while(digitalRead(ButtonPin)==LOW);
+while(digitalRead(ButtonPin)==HIGH);
 
-    tft.setCursor(10,60);
-    tft.print("r= ");
-    tft.println(r,3);
-
-    }
-
-    while (digitalRead(ButtonPin) == LOW);
-    while (digitalRead(ButtonPin) == HIGH);
-    
-    measuredAngles[i] = readEncoderAngle();
+//Complete show
+tft.fillScreen(ST7735_BLACK);
+tft.setCursor(10,20);
+tft.print("HeightAngle");
+for(int i=0; i<NUM_POINTS; i++){
+    tft.setCursor(10,30+i*10);
+    tft.print(knownHeights[i],1);
+    tft.print("mm ");
+    tft.print(measuredAngles[i],3);
 }
-    */
+
+//Complete confirm
+tft.setCursor(10,80);
+tft.println("press to save");
+
+while(digitalRead(ButtonPin)==LOW);
+while(digitalRead(ButtonPin)==HIGH);    
 
 for(int i=0; i<NUM_POINTS; i++){
     EEPROM.put(100 + i * sizeof(float), measuredAngles[i]);
@@ -203,9 +225,9 @@ for(int i=0; i<NUM_POINTS; i++){
 
     tft.fillScreen(ST7735_BLACK);
     tft.setCursor(10,40);
-    tft.println("complete");
+    tft.println("Calibration saved");
 
-    delay(10000);
+    delay(3000);
 
     resetFunc();    
     
