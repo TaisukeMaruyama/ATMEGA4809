@@ -122,9 +122,6 @@ void calibrationMode(){
     const int SAMPLE_COUNT = 30;
     float knownHeights[NUM_POINTS] = {2.5f,5.0f,16.0f,27.0f,38.0f};
     float measuredAngles[NUM_POINTS];
-    float sumAngle = 0.0f;
-    float minAngle = 999.0f;
-    float maxAngle = -999.0f;
 
     tft.setTextSize(1);
     tft.fillScreen(ST7735_BLACK);
@@ -144,6 +141,10 @@ void calibrationMode(){
     while (digitalRead(ButtonPin) == HIGH);
 
     for(int i=0; i<NUM_POINTS; i++){
+
+        float sumAngle = 0.0f;
+        float minAngle = 999.0f;
+        float maxAngle = -999.0f;
         tft.fillScreen(ST7735_BLACK);
         tft.setCursor(10,40);
         tft.print("set ");
@@ -165,22 +166,22 @@ void calibrationMode(){
 
 
     tft.fillScreen(ST7735_BLACK);
-    tft.setCursor(10,20);
+    tft.setCursor(10,30);
     tft.print("Height: ");
     tft.print(knownHeights[i],3);
     tft.println(" mm");
 
-    tft.setCursor(10,40);
+    tft.setCursor(10,50);
     tft.print("AvgAngle: ");
     tft.print(aveAngle,5);
     tft.println(" deg");
 
-    tft.setCursor(10,55);
+    tft.setCursor(10,65);
     tft.print("MinAngle: ");
     tft.print(minAngle,5);
     tft.println(" deg");
 
-    tft.setCursor(10,70);
+    tft.setCursor(10,80);
     tft.print("MaxAngle: ");
     tft.print(maxAngle,5);
     tft.println(" deg");
@@ -192,9 +193,9 @@ void calibrationMode(){
 
 //All Result show 
 tft.fillScreen(ST7735_BLACK);
-tft.setCursor(10,20);
+tft.setCursor(10,30);
 tft.print("All data collected");
-tft.setCursor(10,40);
+tft.setCursor(10,50);
 tft.print("Press to show");
 
 while(digitalRead(ButtonPin)==LOW);
@@ -202,10 +203,10 @@ while(digitalRead(ButtonPin)==HIGH);
 
 //Complete show
 tft.fillScreen(ST7735_BLACK);
-tft.setCursor(10,20);
+tft.setCursor(10,30);
 tft.print("HeightAngle");
 for(int i=0; i<NUM_POINTS; i++){
-    tft.setCursor(10,30+i*10);
+    tft.setCursor(10,40+i*10);
     tft.print(knownHeights[i],1);
     tft.print("mm ");
     tft.print(measuredAngles[i],3);
