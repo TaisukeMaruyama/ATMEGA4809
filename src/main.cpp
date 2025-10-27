@@ -118,7 +118,93 @@ void setup() {
 }
 
 void(*resetFunc)(void) = 0;
+float medianOfArray(float *buf, int n) {
+    float tmp[n];
+    for (int i = 0; i < n; i++) tmp[i] = buf[i];
+    for (int i = 0; i < n - 1; i++) {
+        for (int j = i + 1; j < n; j++) {
+            if (tmp[i] > tmp[j]) {
+                float t = tmp[i];
+                tmp[i] = tmp[j];
+                tmp[j] = t;
+            }
+        }
+    }
+    if (n % 2 == 1) return tmp[n / 2];
+    else return (tmp[n / 2 - 1] + tmp[n / 2]) * 0.5f;
+}
 
+float trimmedMean(float *buf, int n, float trim_frac) {
+    int cut = (int)(n * trim_frac);
+    if (cut * 2 >= n) return medianOfArray(buf, n); // fallback
+    float tmp[n];
+    for (int i = 0; i < n; i++) tmp[i] = buf[i];
+    for (int i = 0; i < n - 1; i++) {
+        for (int j = i + 1; j < n; j++) {
+            if (tmp[i] > tmp[j]) {
+                float t = tmp[i];
+                tmp[i] = tmp[j];
+                tmp[j] = t;
+            }
+        }
+    }
+    float sum = 0;
+    int cnt = 0;
+    for (int i = cut; i < n - cut; i++) {
+        sum += tmp[i];
+        cnt++;
+    }
+    return sum / cnt;
+}
+
+
+float getStableAngleRobust(int preDiscard = 10, int sampleN = 300, float trim_frac = 0.10f, int wait_ms = 10) {
+    float lastAngle = readEncoderAngle();
+    int stableCount = 0;
+    while (true) {
+        float current = readEncoderAngle();
+        float diff = fabs(current - lastAngle);
+        if (diff < 0.005) {
+            stableCount++;
+        } else {
+            stableCount = 0;
+        }
+        if (stableCount > 30) break;
+        lastAngle = current;
+        delay(10);
+    }
+
+    tft.fillRect(0, 60, 160, 20, ST7735_BLACK);
+    tft.setCursor(10, 70);
+    tft.setTextColor(ST7735_WHITE);
+    tft.print("Stable... Averaging");
+
+    // discard
+    for (int i = 0; i < preDiscard; i++) {
+        readEncoderAngle();
+        delay(wait_ms);
+    }
+
+    // sample collect
+    float samples[sampleN];
+    for (int i = 0; i < sampleN; i++) {
+        samples[i] = readEncoderAngle();
+        delay(wait_ms);
+    }
+
+    // robust average
+    float median = medianOfArray(samples, sampleN);
+    float tmean = trimmedMean(samples, sampleN, trim_frac);
+
+    tft.fillRect(0, 60, 160, 20, ST7735_BLACK);
+    tft.setCursor(10, 70);
+    tft.print("Done");
+
+    return tmean; 
+}
+
+
+/*
 float getStableAngle(float threshold = 0.005, int stableCount = 30, int avgCount = 1000){
     float lastAngle = readEncoderAngle();
     int consecutiveStable = 0;
@@ -167,6 +253,7 @@ float getStableAngle(float threshold = 0.005, int stableCount = 30, int avgCount
         delay(10);
     }
 }
+    */
 
 void calibrationMode(){
 
@@ -213,7 +300,7 @@ void calibrationMode(){
         if(a>maxAngle) maxAngle = a;
         delay(10);
     }
-    float stableAngle = getStableAngle();
+    float stableAngle = getStableAngleRobust(10,400,0.10f,12);
     measuredAngles[i] = stableAngle;
 
 
