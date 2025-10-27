@@ -35,6 +35,7 @@ uint16_t zeroPosition = 0x0000;
 uint16_t maxAngle = 0x0400; //maxAngle 90deg
 #define AS5600_AS5601_DEV_ADDRESS 0x36
 #define AS5600_AS5601_REG_RAW_ANGLE 0x0C
+#define ADDR_HEIGHT_OFFSET 300
 
 // height variable //
 
@@ -52,12 +53,15 @@ void setMaxAngle(uint16_t maxAngle);
 float calibJigLow = 5.0f;
 float calibJigHeigh = 30.3f;
 float newScale = 1.0f;
+bool calibrationDone = false;
 
 void setup() {
 
     // I2C settings
     Wire.begin();
     Wire.setClock(400000);
+    restoreZeroPositionFromEEPROM();
+
 
     pinMode(ButtonPin,INPUT_PULLUP);
 
@@ -77,7 +81,6 @@ void setup() {
 
     // EEPROM settings
     restoreCalibrationFromEEPROM();
-    restoreZeroPositionFromEEPROM();
     EEPROM.get(300,heightOffset);
     if(isnan(heightOffset)) heightOffset = 0.0f;
     isReferenceSet = true;
@@ -115,6 +118,55 @@ void setup() {
 }
 
 void(*resetFunc)(void) = 0;
+
+float getStableAngle(float threshold = 0.005, int stableCount = 30, int avgCount = 1000){
+    float lastAngle = readEncoderAngle();
+    int consecutiveStable = 0;
+    unsigned long lastDisplayTime = 0;
+    int dotCount = 0;
+
+    tft.fillRect(0,60,160,20,ST7735_BLACK);
+    tft.setCursor(10,70);
+    tft.setTextColor(ST7735_WHITE);
+    tft.setTextSize(1);
+    tft.print("searching");
+
+    while(true){
+        float current = readEncoderAngle();
+        float diff = fabs(current - lastAngle);
+
+        if(diff < threshold){
+            consecutiveStable++;
+        }else{
+            consecutiveStable =0;
+        }
+        lastAngle = current;
+
+        if(millis() - lastDisplayTime > 500){
+            lastDisplayTime = millis();
+            dotCount = (dotCount + 1) % 4;
+            tft.fillRect(80,60,60,20,ST7735_BLACK);
+            tft.setCursor(80,70);
+            for(int i=0; i < dotCount; i++) tft.print(".");
+        }
+        
+        if(consecutiveStable >= stableCount){
+
+            tft.fillRect(0,60,160,20,ST7735_BLACK);
+            tft.setCursor(10,70);
+            tft.setTextColor(ST7735_WHITE);
+            tft.print("Stable");
+
+            float sum = 0;
+            for(int i=0; i<avgCount; i++){
+                sum += readEncoderAngle();
+                delay(5);
+            }
+            return sum / avgCount;
+        }
+        delay(10);
+    }
+}
 
 void calibrationMode(){
 
@@ -161,8 +213,8 @@ void calibrationMode(){
         if(a>maxAngle) maxAngle = a;
         delay(10);
     }
-    float aveAngle = sumAngle/SAMPLE_COUNT;
-    measuredAngles[i] = aveAngle;
+    float stableAngle = getStableAngle();
+    measuredAngles[i] = stableAngle;
 
 
     tft.fillScreen(ST7735_BLACK);
@@ -173,7 +225,7 @@ void calibrationMode(){
 
     tft.setCursor(10,50);
     tft.print("AvgAngle: ");
-    tft.print(aveAngle,5);
+    tft.print(stableAngle,5);
     tft.println(" deg");
 
     tft.setCursor(10,65);
@@ -209,11 +261,11 @@ for(int i=0; i<NUM_POINTS; i++){
     tft.setCursor(10,40+i*10);
     tft.print(knownHeights[i],1);
     tft.print("mm ");
-    tft.print(measuredAngles[i],3);
+    tft.print(measuredAngles[i],5);
 }
 
 //Complete confirm
-tft.setCursor(10,80);
+tft.setCursor(10,90);
 tft.println("press to save");
 
 while(digitalRead(ButtonPin)==LOW);
@@ -224,11 +276,18 @@ for(int i=0; i<NUM_POINTS; i++){
     EEPROM.put(200 + i * sizeof(float), knownHeights[i]);
 }
 
+heightOffset = 0.0f;
+EEPROM.put(300,heightOffset);
+
+
+
     tft.fillScreen(ST7735_BLACK);
-    tft.setCursor(10,40);
+    tft.setCursor(10,80);
     tft.println("Calibration saved");
 
+
     delay(3000);
+    
 
     resetFunc();    
     
