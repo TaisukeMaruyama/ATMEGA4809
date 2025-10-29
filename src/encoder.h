@@ -8,6 +8,17 @@
 #define AS5600_AS5601_REG_RAW_ANGLE 0x0C
 #define AS5600_ZPOS 0x01
 #define AS5600_MANG 0x05
+#define AS5600_MPOS 0x03
+
+#define ADDR_ZERO_POS 0
+#define ADDR_INITIAL_ANGLE 2
+#define ADDR_NEWSCALE 10
+#define ADDR_OFFSET 14
+#define ADDR_KNOWN_ANGLES 100
+#define ADDR_KNOWN_HEIGHTS 200
+#define ADDR_HEIGHT_OFFSET 300
+#define ADDR_MPOS 304
+#define ADDR_MANG 306
 
 extern float initialAngle;
 extern float previousHeight;
@@ -27,6 +38,10 @@ void calibrationMode();
 void restoreCalibrationFromEEPROM();
 
 float interpolateHeight(float angle);
+
+void writeRegister16(uint8_t reg, uint16_t value);
+void saveAS5600RegistersToEEPROM(uint16_t zpos, uint16_t mpos, uint16_t mang);
+void restoreAS5600RegistersFromEEPROM();
 
 
 #endif

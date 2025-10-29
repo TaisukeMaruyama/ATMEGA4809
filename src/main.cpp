@@ -60,7 +60,6 @@ void setup() {
     // I2C settings
     Wire.begin();
     Wire.setClock(400000);
-    restoreZeroPositionFromEEPROM();
 
 
     pinMode(ButtonPin,INPUT_PULLUP);
@@ -80,13 +79,11 @@ void setup() {
     }
 
     // EEPROM settings
-    restoreCalibrationFromEEPROM();
     EEPROM.get(300,heightOffset);
     if(isnan(heightOffset)) heightOffset = 0.0f;
     isReferenceSet = true;
 
     // AS5600 MaxAngle settings
-    setMaxAngle(maxAngle);
 
 
     // I2C settings
@@ -257,6 +254,8 @@ float getStableAngle(float threshold = 0.005, int stableCount = 30, int avgCount
 
 void calibrationMode(){
 
+    uint16_t zpos,mpos,mang;
+
     const int NUM_POINTS = 5;
     const int SAMPLE_COUNT = 30;
     float knownHeights[NUM_POINTS] = {2.5f,5.0f,16.0f,27.0f,38.0f};
@@ -278,6 +277,33 @@ void calibrationMode(){
         }    
     }
     while (digitalRead(ButtonPin) == HIGH);
+
+    const float rangeDeg = 45.0f;
+    uint16_t rangeCount = (uint16_t)(4096.0f * rangeDeg / 360.0f);
+    mang = rangeCount;
+
+    tft.setTextSize(1);
+    tft.fillScreen(ST7735_BLACK);
+    tft.setCursor(10,40);
+    tft.setTextColor(ST7735_WHITE);
+    tft.println("set ZERO Position");
+    tft.setCursor(10,60);
+    tft.println("PressBTN");
+
+    while(digitalRead(ButtonPin)==LOW);
+    while(digitalRead(ButtonPin)==HIGH);
+
+    float rawAngleDeg = readEncoderAngle();
+    zpos = (uint16_t)(rawAngleDeg/ 360.0f * 4096.0f) & 0x0FFF;
+    mpos = (zpos + rangeCount) & 0x0FFF;
+
+    writeRegister16(AS5600_ZPOS,zpos);
+    writeRegister16(AS5600_MPOS,mpos);
+    writeRegister16(AS5600_MANG,mang);
+    saveAS5600RegistersToEEPROM(zpos,mpos,mang);
+
+    delay(1000);
+
 
     for(int i=0; i<NUM_POINTS; i++){
 

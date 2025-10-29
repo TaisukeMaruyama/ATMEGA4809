@@ -8,6 +8,7 @@
 #define AS5600_AS5601_REG_RAW_ANGLE 0x0C
 #define AS5600_ZPOS 0x01
 #define AS5600_MANG 0x05
+#define AS5600_MPOS 0x03
 
 // EEPROM address map (bytes)
 #define ADDR_ZERO_POS        0      // uint16_t (2B)
@@ -40,6 +41,76 @@ const uint16_t defaultMaxAngle = 0x0400;
 
 const int NUM_POINTS = 5;
 const float EPS_ANGLE = 0.035f;
+
+void writeRegister16(uint8_t reg, uint16_t value){
+    Wire.beginTransmission(AS5600_AS5601_DEV_ADDRESS);
+    Wire.begin(reg);
+    Wire.write((value >> 8)& 0x0F);
+    Wire.write(value & 0xFF);
+    Wire.endTransmission();
+}
+
+uint16_t readRegister16(uint8_t reg) {
+    Wire.beginTransmission(AS5600_AS5601_DEV_ADDRESS);
+    Wire.write(reg);
+    Wire.endTransmission();
+    Wire.requestFrom(AS5600_AS5601_DEV_ADDRESS, 2);
+    uint16_t val = (Wire.read() << 8) | Wire.read();
+    return val & 0x0FFF;
+}
+
+void saveAS5600RegistersToEEPROM(uint16_t zpos, uint16_t mpos, uint16_t mang) {
+    EEPROM.put(ADDR_ZERO_POS, zpos);
+    EEPROM.put(ADDR_MPOS, mpos);
+    EEPROM.put(ADDR_MANG, mang);
+}
+
+void restoreAS5600RegistersFromEEPROM() {
+    uint16_t zpos, mpos, mang;
+    EEPROM.get(ADDR_ZERO_POS, zpos);
+    EEPROM.get(ADDR_MPOS, mpos);
+    EEPROM.get(ADDR_MANG, mang);
+    if (zpos == 0xFFFF) zpos = 0;
+    if (mang == 0xFFFF) mang = defaultMaxAngle;
+
+    writeRegister16(AS5600_ZPOS, zpos);
+    writeRegister16(AS5600_MPOS, mpos);
+    writeRegister16(AS5600_MANG, mang);
+}
+
+//--------------------------------------------------
+// Core functions
+//--------------------------------------------------
+float readEncoderAngle() {
+    Wire.beginTransmission(AS5600_AS5601_DEV_ADDRESS);
+    Wire.write(AS5600_AS5601_REG_RAW_ANGLE);
+    Wire.endTransmission(false);
+    Wire.requestFrom(AS5600_AS5601_DEV_ADDRESS, 2);
+    uint8_t highByte = Wire.read();
+    uint8_t lowByte = Wire.read();
+    uint16_t rawAngle = ((uint16_t)highByte << 8) | lowByte;
+    return (rawAngle * 360.0f / 4096.0f);
+}
+
+void saveCurrentZeroPositionToEEPROM() {
+    uint16_t raw = (uint16_t)(readEncoderAngle() / 360.0f * 4096.0f);
+    writeRegister16(AS5600_ZPOS, raw);
+    EEPROM.put(ADDR_ZERO_POS, raw);
+}
+
+void setInitialAngleFromSensor() {
+    initialAngle = readEncoderAngle();
+    EEPROM.put(ADDR_INITIAL_ANGLE, initialAngle);
+    isReferenceSet = true;
+}
+
+void initEncorder() {
+    Wire.begin();
+    Wire.setClock(400000);
+    restoreAS5600RegistersFromEEPROM();
+    EEPROM.get(ADDR_INITIAL_ANGLE, initialAngle);
+    isReferenceSet = true;
+}
 
 // --- helper: simple pairwise sort by angle (bubble - fine for N=5) ---
 void sortPairs(float angles[], float heights[], int N){
@@ -188,98 +259,20 @@ float interpolateHeight(float angle){
     return 0.0f;
 }
 
-void initEncorder(){
-    Wire.begin();
-    Wire.setClock(400000);
-    // restore scale/offset if desired
-    float tmp;
-    EEPROM.get(ADDR_NEWSCALE, tmp); newScale = tmp;
-    EEPROM.get(ADDR_OFFSET, offset);
-    if(isnan(newScale) || newScale == 0){
-        newScale = 1.394124f;
-        offset = 0.034143f + caribHeight;
-    }
-    // restore zero position
-    uint16_t rawAngle;
-    EEPROM.get(ADDR_ZERO_POS, rawAngle);
-    setZeroPosition(rawAngle);
-    isReferenceSet = true;
-
-    setMaxAngle(defaultMaxAngle);
-}
-void restoreCalibrationFromEEPROM() {
-    EEPROM.get(ADDR_NEWSCALE, newScale);
-    EEPROM.get(ADDR_OFFSET, offset);
-    if(isnan(newScale) || newScale == 0){
-        newScale = 1.394124f;
-        offset = 0.034143f + caribHeight;
-    }
-}
-
-
-void setZeroPosition(uint16_t zeroPosition) {
-    Wire.beginTransmission(AS5600_AS5601_DEV_ADDRESS);
-    Wire.write(AS5600_ZPOS);
-    Wire.write(zeroPosition >> 8);
-    Wire.write(zeroPosition & 0xFF);
-    Wire.endTransmission();
-}
-
-void setMaxAngle(uint16_t maxAngle) {
-    Wire.beginTransmission(AS5600_AS5601_DEV_ADDRESS);
-    Wire.write(AS5600_MANG);
-    Wire.write(maxAngle >> 8);
-    Wire.write(maxAngle & 0xFF);
-    Wire.endTransmission();
-}
-
-float readEncoderAngle() {
-    Wire.beginTransmission(AS5600_AS5601_DEV_ADDRESS);
-    Wire.write(AS5600_AS5601_REG_RAW_ANGLE);
-    Wire.endTransmission(false);
-    Wire.requestFrom(AS5600_AS5601_DEV_ADDRESS, 2);
-
-    if(Wire.available() < 2) return 0.0f; // guard
-    uint8_t highByte = Wire.read();
-    uint8_t lowByte = Wire.read();
-
-    uint16_t RawAngle = ((uint16_t)highByte << 8) | lowByte;
-    uint16_t invertedAngle = 4095 - RawAngle;
-    return invertedAngle * (360.0f / 4096.0f);
-}
-
-void saveCurrentZeroPositionToEEPROM(){
-    Wire.beginTransmission(AS5600_AS5601_DEV_ADDRESS);
-    Wire.write(AS5600_AS5601_REG_RAW_ANGLE);
-    Wire.endTransmission(false);
-    Wire.requestFrom(AS5600_AS5601_DEV_ADDRESS,2);
-    if(Wire.available() < 2) return;
-    uint8_t highByte = Wire.read();
-    uint8_t lowByte = Wire.read();
-    uint16_t rawAngle = ((uint16_t)highByte << 8) | lowByte;
-
-    setZeroPosition(rawAngle);
-
-    EEPROM.put(ADDR_ZERO_POS, rawAngle);
-}
-
-void restoreZeroPositionFromEEPROM(){
-    uint16_t rawAngle;
-    EEPROM.get(ADDR_ZERO_POS,rawAngle);
-    setZeroPosition(rawAngle);
-}
-
-void setInitialAngleFromSensor(){
-    initialAngle = readEncoderAngle();
-    EEPROM.put(ADDR_INITIAL_ANGLE,initialAngle);
-    isReferenceSet = true;
-}
 
 float updateHeight(){
     if(!isReferenceSet) return 0.0f;
     currentAngle = readEncoderAngle();
     float relativeAngle = currentAngle - initialAngle;
-    float rawHeight =  interpolateHeight(currentAngle);
-    height = rawHeight - heightOffset;
+    float rawHeight =  interpolateHeight(currentAngle) - heightOffset;
+
+    if(height < minHeight){
+        rawHeight = minHeight;
+    }
+    if(height > maxHeight){
+        rawHeight = maxHeight;
+    }     
+
+    height = rawHeight;
     return height;
 }
