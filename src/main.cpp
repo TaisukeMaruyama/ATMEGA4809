@@ -26,13 +26,13 @@ const int ButtonPin = 12;
 
 // AS5600 register //
 #define AS5600_AS5601_DEV_ADDRESS 0x36
-#define AS5600_AS5601_REG_RAW_ANGLE 0x0C
+#define AS5600_AS5601_REG_RAW_ANGLE 0x0E
 #define AS5600_ZMC0 0x00
 #define AS5600_ZPOS 0x01
 #define AS5600_MPOS 0x03
 #define AS5600_MANG 0x05
 uint16_t zeroPosition = 0x0000;
-uint16_t maxAngle = 0x0400; //maxAngle 90deg
+uint16_t maxAngle = 0x0200; //maxAngle 90deg
 #define AS5600_AS5601_DEV_ADDRESS 0x36
 #define AS5600_AS5601_REG_RAW_ANGLE 0x0C
 #define ADDR_HEIGHT_OFFSET 300
@@ -64,6 +64,8 @@ void setup() {
 
     pinMode(ButtonPin,INPUT_PULLUP);
 
+    restoreAS5600RegistersFromEEPROM();
+
     delay(100);
     if(digitalRead(ButtonPin)==LOW){
     pinMode(TFT_POWER_PIN,OUTPUT);
@@ -84,6 +86,8 @@ void setup() {
     isReferenceSet = true;
 
     // AS5600 MaxAngle settings
+    setInitialAngleFromSensor();
+    restoreCalibrationFromEEPROM();
 
 
     // I2C settings
@@ -200,58 +204,6 @@ float getStableAngleRobust(int preDiscard = 10, int sampleN = 300, float trim_fr
     return tmean; 
 }
 
-
-/*
-float getStableAngle(float threshold = 0.005, int stableCount = 30, int avgCount = 1000){
-    float lastAngle = readEncoderAngle();
-    int consecutiveStable = 0;
-    unsigned long lastDisplayTime = 0;
-    int dotCount = 0;
-
-    tft.fillRect(0,60,160,20,ST7735_BLACK);
-    tft.setCursor(10,70);
-    tft.setTextColor(ST7735_WHITE);
-    tft.setTextSize(1);
-    tft.print("searching");
-
-    while(true){
-        float current = readEncoderAngle();
-        float diff = fabs(current - lastAngle);
-
-        if(diff < threshold){
-            consecutiveStable++;
-        }else{
-            consecutiveStable =0;
-        }
-        lastAngle = current;
-
-        if(millis() - lastDisplayTime > 500){
-            lastDisplayTime = millis();
-            dotCount = (dotCount + 1) % 4;
-            tft.fillRect(80,60,60,20,ST7735_BLACK);
-            tft.setCursor(80,70);
-            for(int i=0; i < dotCount; i++) tft.print(".");
-        }
-        
-        if(consecutiveStable >= stableCount){
-
-            tft.fillRect(0,60,160,20,ST7735_BLACK);
-            tft.setCursor(10,70);
-            tft.setTextColor(ST7735_WHITE);
-            tft.print("Stable");
-
-            float sum = 0;
-            for(int i=0; i<avgCount; i++){
-                sum += readEncoderAngle();
-                delay(5);
-            }
-            return sum / avgCount;
-        }
-        delay(10);
-    }
-}
-    */
-
 void calibrationMode(){
 
     uint16_t zpos,mpos,mang;
@@ -301,6 +253,7 @@ void calibrationMode(){
     writeRegister16(AS5600_MPOS,mpos);
     writeRegister16(AS5600_MANG,mang);
     saveAS5600RegistersToEEPROM(zpos,mpos,mang);
+    EEPROM.put(ADDR_ZERO_POS,zpos);
 
     delay(1000);
 

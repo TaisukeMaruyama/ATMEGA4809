@@ -5,7 +5,8 @@
 
 // AS5600 register //
 #define AS5600_AS5601_DEV_ADDRESS 0x36
-#define AS5600_AS5601_REG_RAW_ANGLE 0x0C
+#define AS5600_AS5601_REG_RAW_ANGLE 0x0E
+#define AS5600_REG_ANGLE 0x0E
 #define AS5600_ZPOS 0x01
 #define AS5600_MANG 0x05
 #define AS5600_MPOS 0x03
@@ -18,36 +19,39 @@
 #define ADDR_KNOWN_ANGLES  100      // 5 floats = 20B
 #define ADDR_KNOWN_HEIGHTS 200      // 5 floats = 20B
 #define ADDR_HEIGHT_OFFSET  300     // float
+#define ADDR_MPOS           304     // uint16_t
+#define ADDR_MANG           306     // uint16_t
 
 // parameter //
 bool isReferenceSet = false;
-float currentAngle = 0;
+float currentAngle = 0.0f;
 float previousHeight = NAN;
-float initialAngle = 0;
-float relativeAngle = 0;
+float initialAngle = 0.0f;
+float relativeAngle = 0.0f;
 const float proveLength = 80.68612f;
 const float caribHeight = 5.0f;
 const float minHeight = 1.9f;
 const float maxHeight = 50.0f;
-float height = 0.0;
-float smoothHeight = 0.0;
+float height = 0.0f;
+float smoothHeight = 0.0f;
 const float smoothingFactor = 0.7f; // RC Filter
 
 float scaleFactor = 1.394124f;
 float offset = 0.0f;
 float heightOffset = 0.0f;
 
-const uint16_t defaultMaxAngle = 0x0400;
+const uint16_t defaultMaxAngle = 0x0200;
 
 const int NUM_POINTS = 5;
 const float EPS_ANGLE = 0.035f;
 
 void writeRegister16(uint8_t reg, uint16_t value){
     Wire.beginTransmission(AS5600_AS5601_DEV_ADDRESS);
-    Wire.begin(reg);
-    Wire.write((value >> 8)& 0x0F);
+    Wire.write(reg);
+    Wire.write((value >> 8) & 0x0F); 
     Wire.write(value & 0xFF);
     Wire.endTransmission();
+    delay(5);
 }
 
 uint16_t readRegister16(uint8_t reg) {
@@ -55,7 +59,8 @@ uint16_t readRegister16(uint8_t reg) {
     Wire.write(reg);
     Wire.endTransmission();
     Wire.requestFrom(AS5600_AS5601_DEV_ADDRESS, 2);
-    uint16_t val = (Wire.read() << 8) | Wire.read();
+    if (Wire.available() < 2) return 0;
+    uint16_t val = ((uint16_t)Wire.read() << 8) | Wire.read();
     return val & 0x0FFF;
 }
 
@@ -66,17 +71,51 @@ void saveAS5600RegistersToEEPROM(uint16_t zpos, uint16_t mpos, uint16_t mang) {
 }
 
 void restoreAS5600RegistersFromEEPROM() {
-    uint16_t zpos, mpos, mang;
+    uint16_t zpos=0, mpos=0, mang=defaultMaxAngle;
     EEPROM.get(ADDR_ZERO_POS, zpos);
     EEPROM.get(ADDR_MPOS, mpos);
     EEPROM.get(ADDR_MANG, mang);
-    if (zpos == 0xFFFF) zpos = 0;
-    if (mang == 0xFFFF) mang = defaultMaxAngle;
 
     writeRegister16(AS5600_ZPOS, zpos);
     writeRegister16(AS5600_MPOS, mpos);
     writeRegister16(AS5600_MANG, mang);
+    delay(10);
 }
+
+void restoreZeroPositionFromEEPROM(){
+    uint16_t rawAngle = 0;
+    EEPROM.get(ADDR_ZERO_POS, rawAngle);
+    writeRegister16(AS5600_ZPOS, rawAngle);
+    delay(5);
+}
+
+void saveCurrentZeroPositionToEEPROM(){
+    // read raw angle from AS5600
+    Wire.beginTransmission(AS5600_AS5601_DEV_ADDRESS);
+    Wire.write(AS5600_AS5601_REG_RAW_ANGLE);
+    Wire.endTransmission(false);
+    Wire.requestFrom(AS5600_AS5601_DEV_ADDRESS,2);
+    if (Wire.available() < 2) return;
+    uint8_t hb = Wire.read();
+    uint8_t lb = Wire.read();
+    uint16_t rawAngle = ((uint16_t)hb << 8) | lb;
+    writeRegister16(AS5600_ZPOS, rawAngle);
+    writeRegister16(AS5600_MANG,defaultMaxAngle);
+    EEPROM.put(ADDR_ZERO_POS, rawAngle);
+    EEPROM.put(ADDR_MANG,defaultMaxAngle);
+    delay(5);
+}
+
+void restoreCalibrationFromEEPROM() {
+    EEPROM.get(ADDR_NEWSCALE, newScale);
+    EEPROM.get(ADDR_OFFSET, offset);
+    if(isnan(newScale) || newScale == 0){
+        newScale = 1.394124f;
+        offset = 0.034143f + caribHeight;
+    }
+}
+
+
 
 //--------------------------------------------------
 // Core functions
@@ -89,14 +128,9 @@ float readEncoderAngle() {
     uint8_t highByte = Wire.read();
     uint8_t lowByte = Wire.read();
     uint16_t rawAngle = ((uint16_t)highByte << 8) | lowByte;
-    return (rawAngle * 360.0f / 4096.0f);
+    return (rawAngle * 45.0f / 4096.0f);
 }
 
-void saveCurrentZeroPositionToEEPROM() {
-    uint16_t raw = (uint16_t)(readEncoderAngle() / 360.0f * 4096.0f);
-    writeRegister16(AS5600_ZPOS, raw);
-    EEPROM.put(ADDR_ZERO_POS, raw);
-}
 
 void setInitialAngleFromSensor() {
     initialAngle = readEncoderAngle();
@@ -124,24 +158,17 @@ void sortPairs(float angles[], float heights[], int N){
     }
 }
 
-// --- helper: MAD-based robust scale estimator ---
 float mad_scale(float res[], int N){
     float absd[NUM_POINTS];
     for(int i=0;i<N;i++) absd[i] = fabs(res[i]);
-    // sort absd
     for(int i=0;i<N-1;i++) for(int j=i+1;j<N;j++) if(absd[i] > absd[j]){ float t=absd[i]; absd[i]=absd[j]; absd[j]=t; }
     float med = absd[N/2];
-    return 1.4826f * med; // convert MAD -> approx sigma
+    return 1.4826f * med;
 }
 
-// --- robust calibration routine — modifies knownHeight[] in-place ---
-// NOTE: This is intended to be called during calibration, NOT during normal measurement.
-//       If you want to save adjusted heights, call writeHeightsToEEPROM() afterwards manually.
 void robustCalibratePoints(float knownAngles[], float knownHeight[], int N=NUM_POINTS){
     if(N < 2) return;
     sortPairs(knownAngles, knownHeight, N);
-
-    // initial ordinary least squares for a,b
     float sumA=0,sumH=0,sumA2=0,sumAH=0;
     for(int i=0;i<N;i++){
         sumA += knownAngles[i];
@@ -150,13 +177,12 @@ void robustCalibratePoints(float knownAngles[], float knownHeight[], int N=NUM_P
         sumAH += knownAngles[i]*knownHeight[i];
     }
     float denom = N*sumA2 - sumA*sumA;
-    if(fabs(denom) < 1e-6f) return; // degenerate
+    if(fabs(denom) < 1e-6f) return;
     float a = (N*sumAH - sumA*sumH) / denom;
     float b = (sumH - a*sumA) / N;
 
-    // IRLS with Huber weights (small N so a few iterations)
     const int MAX_IT = 4;
-    const float HUBER_C = 1.2f; // tuning constant; adjust in calibration routine if needed
+    const float HUBER_C = 1.2f;
     for(int it=0; it<MAX_IT; it++){
         float res[NUM_POINTS];
         for(int i=0;i<N;i++) res[i] = knownHeight[i] - (a*knownAngles[i] + b);
@@ -169,8 +195,7 @@ void robustCalibratePoints(float knownAngles[], float knownHeight[], int N=NUM_P
             float absr = fabs(r);
             float thresh = HUBER_C * s;
             float wi = 1.0f;
-            if(absr > thresh) wi = thresh / absr; // Huber-type downweight
-
+            if(absr > thresh) wi = thresh / absr;
             wsum += wi;
             wsumA += wi * knownAngles[i];
             wsumH += wi * knownHeight[i];
@@ -264,12 +289,13 @@ float updateHeight(){
     if(!isReferenceSet) return 0.0f;
     currentAngle = readEncoderAngle();
     float relativeAngle = currentAngle - initialAngle;
-    float rawHeight =  interpolateHeight(currentAngle) - heightOffset;
+    float rawHeight = interpolateHeight(currentAngle) - heightOffset;
 
-    if(height < minHeight){
+    // clamp rawHeight
+    if(rawHeight < minHeight){
         rawHeight = minHeight;
     }
-    if(height > maxHeight){
+    if(rawHeight > maxHeight){
         rawHeight = maxHeight;
     }     
 
