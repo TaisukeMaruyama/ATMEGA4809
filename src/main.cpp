@@ -13,9 +13,9 @@
 #include <EEPROM.h>
 
 // IO settings //
-#define GreenLed 16 //powerLed
-#define TFT_CS  7
-#define TFT_DC  10
+#define GreenLed 16 // powerLed
+#define TFT_CS 7
+#define TFT_DC 10
 #define TFT_SDA 4
 #define TFT_SCL 6
 #define TFT_RST 9
@@ -24,101 +24,22 @@
 #define TFT_POWER_PIN 13
 const int ButtonPin = 12;
 
-// AS5600 register //
-#define AS5600_AS5601_DEV_ADDRESS 0x36
-#define AS5600_AS5601_REG_RAW_ANGLE 0x0E
-#define AS5600_ZMC0 0x00
-#define AS5600_ZPOS 0x01
-#define AS5600_MPOS 0x03
-#define AS5600_MANG 0x05
-uint16_t zeroPosition = 0x0000;
-uint16_t maxAngle = 0x0200; //maxAngle 90deg
-#define AS5600_AS5601_DEV_ADDRESS 0x36
-#define AS5600_AS5601_REG_RAW_ANGLE 0x0C
-#define ADDR_HEIGHT_OFFSET 300
-
-// height variable //
+// TFT instance //
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 // power LED variable //
 bool GreenLedState = false;
-
-// prototype //
-Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
-float readEncoderAngle();
-void setZeroPosition(uint16_t zeroPosition);
-void setMaxAngle(uint16_t maxAngle);
-
 
 // carib //
 float calibJigLow = 5.0f;
 float calibJigHeigh = 30.3f;
 float newScale = 1.0f;
-bool calibrationDone = false;
-
-void setup() {
-
-    // I2C settings
-    Wire.begin();
-    Wire.setClock(400000);
-
-
-    pinMode(ButtonPin,INPUT_PULLUP);
-
-    restoreAS5600RegistersFromEEPROM();
-
-    delay(100);
-    if(digitalRead(ButtonPin)==LOW){
-    pinMode(TFT_POWER_PIN,OUTPUT);
-    digitalWrite(TFT_POWER_PIN,HIGH);    
-    tft.initR(INITR_GREENTAB); //for greentab setting
-    tft.invertDisplay(true);
-    tft.fillScreen(ST7735_BLACK);
-    tft.setRotation(1);
-    tft.setTextSize(1);
-      
-    calibrationMode();         
-            
-    }
-
-    // EEPROM settings
-    EEPROM.get(300,heightOffset);
-    if(isnan(heightOffset)) heightOffset = 0.0f;
-    isReferenceSet = true;
-
-    // AS5600 MaxAngle settings
-    setInitialAngleFromSensor();
-    restoreCalibrationFromEEPROM();
-
-
-    // I2C settings
-    Wire.begin();
-    Wire.setClock(400000);
-
-    pinMode(TFT_POWER_PIN,OUTPUT);
-    digitalWrite(TFT_POWER_PIN,HIGH);
-
-    
-    tft.initR(INITR_GREENTAB); //for greentab setting
-    tft.invertDisplay(true);
-    tft.fillScreen(ST7735_BLACK);
-    tft.setRotation(1);
-    tft.setTextSize(1);
-  
-    // startup message
-    tft.setTextColor(0xf7be);
-    tft.setFont(&FreeMonoBoldOblique9pt7b);
-    tft.setCursor(40,70);
-    tft.println("KO");
-    tft.setCursor(65,70);
-    tft.println("PROPO");
-
-    delay(3000);
-    tft.fillRect(33,60,95,30,ST7735_BLACK);    
-
-
-}
 
 void(*resetFunc)(void) = 0;
+
+//==============================
+// Utility: Robust Statistics
+//==============================
 float medianOfArray(float *buf, int n) {
     float tmp[n];
     for (int i = 0; i < n; i++) tmp[i] = buf[i];
@@ -137,7 +58,7 @@ float medianOfArray(float *buf, int n) {
 
 float trimmedMean(float *buf, int n, float trim_frac) {
     int cut = (int)(n * trim_frac);
-    if (cut * 2 >= n) return medianOfArray(buf, n); // fallback
+    if (cut * 2 >= n) return medianOfArray(buf, n);
     float tmp[n];
     for (int i = 0; i < n; i++) tmp[i] = buf[i];
     for (int i = 0; i < n - 1; i++) {
@@ -158,18 +79,14 @@ float trimmedMean(float *buf, int n, float trim_frac) {
     return sum / cnt;
 }
 
-
 float getStableAngleRobust(int preDiscard = 10, int sampleN = 300, float trim_frac = 0.10f, int wait_ms = 10) {
     float lastAngle = readEncoderAngle();
     int stableCount = 0;
     while (true) {
         float current = readEncoderAngle();
         float diff = fabs(current - lastAngle);
-        if (diff < 0.005) {
-            stableCount++;
-        } else {
-            stableCount = 0;
-        }
+        if (diff < 0.005) stableCount++;
+        else stableCount = 0;
         if (stableCount > 30) break;
         lastAngle = current;
         delay(10);
@@ -180,230 +97,277 @@ float getStableAngleRobust(int preDiscard = 10, int sampleN = 300, float trim_fr
     tft.setTextColor(ST7735_WHITE);
     tft.print("Stable... Averaging");
 
-    // discard
     for (int i = 0; i < preDiscard; i++) {
         readEncoderAngle();
         delay(wait_ms);
     }
 
-    // sample collect
     float samples[sampleN];
     for (int i = 0; i < sampleN; i++) {
         samples[i] = readEncoderAngle();
         delay(wait_ms);
     }
 
-    // robust average
-    float median = medianOfArray(samples, sampleN);
     float tmean = trimmedMean(samples, sampleN, trim_frac);
 
     tft.fillRect(0, 60, 160, 20, ST7735_BLACK);
     tft.setCursor(10, 70);
     tft.print("Done");
 
-    return tmean; 
+    return tmean;
 }
 
-void calibrationMode(){
+//==============================
+// setup()
+//==============================
+void setup() {
 
-    uint16_t zpos,mpos,mang;
+    Wire.begin();
+    Wire.setClock(400000);
+    initEncoder();
+    pinMode(ButtonPin, INPUT_PULLUP);
+    pinMode(TFT_POWER_PIN, OUTPUT);
+    digitalWrite(TFT_POWER_PIN, HIGH);
+
+    delay(300);
+
+    if (digitalRead(ButtonPin) == LOW) {
+        pinMode(TFT_POWER_PIN, OUTPUT);
+        digitalWrite(TFT_POWER_PIN, HIGH);
+        tft.initR(INITR_GREENTAB);
+        tft.invertDisplay(true);
+        tft.fillScreen(ST7735_BLACK);
+        tft.setRotation(1);
+        tft.setTextSize(1);
+        calibrationMode();
+    }
+
+    tft.initR(INITR_GREENTAB);
+    tft.invertDisplay(true);
+    tft.fillScreen(ST7735_BLACK);
+    tft.setRotation(1);
+    tft.setTextSize(1);
+    tft.setTextColor(ST7735_WHITE);
+
+    if (!isBurned()) {
+        tft.fillScreen(ST7735_BLACK);
+        tft.setCursor(10, 20);
+        tft.println("Burn Mode");
+        tft.setCursor(10, 40);
+        tft.println("Move to MIN position");
+        tft.setCursor(10, 60);
+        tft.println("Press BTN");
+
+        // wait for button press
+        while (digitalRead(ButtonPin) == HIGH);
+        while (digitalRead(ButtonPin) == LOW);
+
+        uint16_t zeroPos = readRawAngle(); // raw counts 0..4095
+        writeZPOSandMANG(zeroPos, 0); // temporary write ZPOS
+
+        tft.fillScreen(ST7735_BLACK);
+        tft.setCursor(10, 20);
+        tft.println("MIN recorded");
+        tft.setCursor(10, 40);
+        tft.println("Move to MAX position");
+        tft.setCursor(10, 60);
+        tft.println("Press BTN");
+
+        while (digitalRead(ButtonPin) == HIGH);
+        while (digitalRead(ButtonPin) == LOW);
+
+        uint16_t maxPos = readRawAngle();
+
+        // calculate MANG (difference, modular 4096)
+        uint16_t mang;
+        if (maxPos >= zeroPos) mang = maxPos - zeroPos;
+        else mang = 4096 + maxPos - zeroPos;
+
+        // Minimal range check: must be > 18 degrees => > (18/360)*4096 ≈ 205
+        if (mang < 205) {
+            tft.fillScreen(ST7735_BLACK);
+            tft.setCursor(10, 30);
+            tft.println("Range too small!");
+            tft.setCursor(10, 50);
+            tft.println("Abort burn");
+            delay(2000);
+            // fall through to normal mode without burn
+        } else {
+            // write ZPOS, MPOS, MANG and execute burn
+            burnAngleAndMANG(zeroPos, maxPos); // function writes registers and issues burn
+            delay(200);
+
+        tft.fillScreen(ST7735_BLACK);
+        tft.setCursor(10, 40);
+        tft.println("Burn Complete!");
+        tft.setCursor(10, 60);
+        tft.println("Power cycle now");
+
+        delay(2000);
+        resetFunc();
+        }
+    } else {
+    tft.fillScreen(ST7735_BLACK);
+    tft.setCursor(10, 40);
+    tft.println("Normal Mode");
+    delay(2000);
+    }
+
+    restoreCalibrationFromEEPROM();
+    restoreZeroPositionFromEEPROM();
+    EEPROM.get(300, heightOffset);
+    if (isnan(heightOffset)) heightOffset = 0.0f;
+    isReferenceSet = true;
+
+    setMaxAngle(0x0200); // 45 degrees range (runtime override if needed)
+
+    tft.fillScreen(ST7735_BLACK);
+    tft.setTextColor(0xf7be);
+    tft.setFont(&FreeMonoBoldOblique9pt7b);
+    tft.setCursor(40, 70);
+    tft.println("KO");
+    tft.setCursor(65, 70);
+    tft.println("PROPO");
+
+    delay(2000);
+    tft.fillRect(33, 60, 95, 30, ST7735_BLACK);
+}
+
+//==============================
+// Calibration Mode
+//==============================
+
+
+void calibrationMode() {
 
     const int NUM_POINTS = 5;
-    const int SAMPLE_COUNT = 30;
-    float knownHeights[NUM_POINTS] = {2.5f,5.0f,16.0f,27.0f,38.0f};
+    float knownHeights[NUM_POINTS] = {2.5f, 5.0f, 16.0f, 27.0f, 38.0f};
     float measuredAngles[NUM_POINTS];
 
-    tft.setTextSize(1);
     tft.fillScreen(ST7735_BLACK);
-    tft.setCursor(10,40);
-    tft.setTextColor(ST7735_WHITE);
+    tft.setTextSize(1);
+    tft.setCursor(10, 30);
     tft.println("CalibrationMode");
-    tft.setCursor(10,60);
-    tft.println("PressBTN");
+    // tft.setCursor(10, 40);
+    // tft.println("Press BTN");
 
-    unsigned long pressStart = millis();
-    while (digitalRead(ButtonPin) == LOW)
-    {
-        if(millis() - pressStart > 5000){
-            break;
-        }    
-    }
-    while (digitalRead(ButtonPin) == HIGH);
-
-    const float rangeDeg = 45.0f;
-    uint16_t rangeCount = (uint16_t)(4096.0f * rangeDeg / 360.0f);
-    mang = rangeCount;
-
-    tft.setTextSize(1);
-    tft.fillScreen(ST7735_BLACK);
+    bool burned = isBurned();
     tft.setCursor(10,40);
-    tft.setTextColor(ST7735_WHITE);
-    tft.println("set ZERO Position");
-    tft.setCursor(10,60);
-    tft.println("PressBTN");
-
-    while(digitalRead(ButtonPin)==LOW);
-    while(digitalRead(ButtonPin)==HIGH);
-
-    float rawAngleDeg = readEncoderAngle();
-    zpos = (uint16_t)(rawAngleDeg/ 360.0f * 4096.0f) & 0x0FFF;
-    mpos = (zpos + rangeCount) & 0x0FFF;
-
-    writeRegister16(AS5600_ZPOS,zpos);
-    writeRegister16(AS5600_MPOS,mpos);
-    writeRegister16(AS5600_MANG,mang);
-    saveAS5600RegistersToEEPROM(zpos,mpos,mang);
-    EEPROM.put(ADDR_ZERO_POS,zpos);
-
-    delay(1000);
-
-
-    for(int i=0; i<NUM_POINTS; i++){
-
-        float sumAngle = 0.0f;
-        float minAngle = 999.0f;
-        float maxAngle = -999.0f;
-        tft.fillScreen(ST7735_BLACK);
-        tft.setCursor(10,40);
-        tft.print("set ");
-        tft.print(knownHeights[i],1);
-        tft.println("mm");
-    
-    while(digitalRead(ButtonPin)==LOW);
-    while(digitalRead(ButtonPin)==HIGH);
-
-    for(int s=0; s<SAMPLE_COUNT; s++){
-        float a = readEncoderAngle();
-        sumAngle += a;
-        if(a<minAngle) minAngle = a;
-        if(a>maxAngle) maxAngle = a;
-        delay(10);
+    if(burned){
+        tft.println("Burn Success");
+    }else{
+        tft.println("Burn False");
     }
-    float stableAngle = getStableAngleRobust(10,400,0.10f,12);
-    measuredAngles[i] = stableAngle;
 
-
-    tft.fillScreen(ST7735_BLACK);
-    tft.setCursor(10,30);
-    tft.print("Height: ");
-    tft.print(knownHeights[i],3);
-    tft.println(" mm");
+    uint16_t zpos = readRegister16(AS5600_ZPOS);
+    uint16_t mpos = readRegister16(AS5600_MPOS);
+    uint16_t mang = readRegister16(AS5600_MANG);
 
     tft.setCursor(10,50);
-    tft.print("AvgAngle: ");
-    tft.print(stableAngle,5);
-    tft.println(" deg");
+    tft.print("ZPOS: 0x");
+    tft.println(zpos,HEX);
 
-    tft.setCursor(10,65);
-    tft.print("MinAngle: ");
-    tft.print(minAngle,5);
-    tft.println(" deg");
+    tft.setCursor(10,60);
+    tft.print("MPOS: 0x");
+    tft.println(mpos,HEX);
 
+    tft.setCursor(10,70);
+    tft.print("MANG: 0x");
+    tft.println(mang,HEX);
+
+    float rawAngle = readRawAngle()*(360.0/4096.0);
+    float scaledAngle = readEncoderAngle();
     tft.setCursor(10,80);
-    tft.print("MaxAngle: ");
-    tft.print(maxAngle,5);
+    tft.print("RAW: ");
+    tft.print(rawAngle,5);
+    tft.println(" deg");
+    tft.setCursor(10,90);
+    tft.print("ANG: ");
+    tft.print(scaledAngle,5);
     tft.println(" deg");
 
-    while(digitalRead(ButtonPin)==LOW);
-    while(digitalRead(ButtonPin)==HIGH);
+    uint8_t brunCount = readBurnCount();
+    tft.setCursor(10,100);
+    tft.print("BRN CNT: 0x");
+    tft.println(brunCount,HEX);
 
+
+
+    while (digitalRead(ButtonPin) == LOW);
+    while (digitalRead(ButtonPin) == HIGH);
+
+    for (int i = 0; i < NUM_POINTS; i++) {
+        tft.fillScreen(ST7735_BLACK);
+        tft.setCursor(10, 40);
+        tft.print("Set ");
+        tft.print(knownHeights[i], 1);
+        tft.println("mm");
+        tft.setCursor(10, 60);
+        tft.println("Press BTN");
+
+        while (digitalRead(ButtonPin) == LOW);
+        while (digitalRead(ButtonPin) == HIGH);
+
+        float avgAngle = getStableAngleRobust(10, 200, 0.1f, 5);
+        measuredAngles[i] = avgAngle;
+
+        tft.fillScreen(ST7735_BLACK);
+        tft.setCursor(10, 20);
+        tft.print("Height: ");
+        tft.print(knownHeights[i], 1);
+        tft.println("mm");
+        tft.setCursor(10, 40);
+        tft.print("AvgAngle: ");
+        tft.print(avgAngle, 3);
+        tft.println(" deg");
+
+        while (digitalRead(ButtonPin) == LOW);
+        while (digitalRead(ButtonPin) == HIGH);
     }
 
-//All Result show 
-tft.fillScreen(ST7735_BLACK);
-tft.setCursor(10,30);
-tft.print("All data collected");
-tft.setCursor(10,50);
-tft.print("Press to show");
-
-while(digitalRead(ButtonPin)==LOW);
-while(digitalRead(ButtonPin)==HIGH);
-
-//Complete show
-tft.fillScreen(ST7735_BLACK);
-tft.setCursor(10,30);
-tft.print("HeightAngle");
-for(int i=0; i<NUM_POINTS; i++){
-    tft.setCursor(10,40+i*10);
-    tft.print(knownHeights[i],1);
-    tft.print("mm ");
-    tft.print(measuredAngles[i],5);
-}
-
-//Complete confirm
-tft.setCursor(10,90);
-tft.println("press to save");
-
-while(digitalRead(ButtonPin)==LOW);
-while(digitalRead(ButtonPin)==HIGH);    
-
-for(int i=0; i<NUM_POINTS; i++){
-    EEPROM.put(100 + i * sizeof(float), measuredAngles[i]);
-    EEPROM.put(200 + i * sizeof(float), knownHeights[i]);
-}
-
-heightOffset = 0.0f;
-EEPROM.put(300,heightOffset);
-
-
+    for (int i = 0; i < NUM_POINTS; i++) {
+        EEPROM.put(100 + i * sizeof(float), measuredAngles[i]);
+        EEPROM.put(200 + i * sizeof(float), knownHeights[i]);
+    }
 
     tft.fillScreen(ST7735_BLACK);
-    tft.setCursor(10,80);
+    tft.setCursor(10, 40);
     tft.println("Calibration saved");
-
-
     delay(3000);
-    
-
-    resetFunc();    
-    
+    resetFunc();
 }
 
+//==============================
+// loop()
+//==============================
 void loop() {
-
-    static unsigned long buttonPuressStart = 0;
     static bool buttonPressed = false;
 
-    if(digitalRead(ButtonPin) == LOW){
-        if(!buttonPressed){
+    if (digitalRead(ButtonPin) == LOW) {
+        if (!buttonPressed) {
             buttonPressed = true;
             float currentAngle = readEncoderAngle();
             float measuredHeight = interpolateHeight(currentAngle);
-
             const float referenceHeight = 5.0f;
-
             heightOffset = measuredHeight - referenceHeight;
-            EEPROM.put(300,heightOffset);
+            EEPROM.put(300, heightOffset);
+        }
+    } else {
+        buttonPressed = false;
+    }
 
-        }       
-    }else{
-        if(buttonPressed){
-            
-            }
-            buttonPressed = false;
-    }    
-    
-
-
-    // battery survey
     updateBatteryStatus(tft);
 
-
-    //height calucurate   
-     //carib calucrate 
-     if(digitalRead(ButtonPin) == LOW){
+    if (digitalRead(ButtonPin) == LOW) {
         setInitialAngleFromSensor();
         saveCurrentZeroPositionToEEPROM();
-      }
-    
-      float height = updateHeight(); 
-    updateHeightDisplay(tft,height,previousHeight);
+    }
 
-    // sleep control
+    float height = updateHeight();
+    updateHeightDisplay(tft, height, previousHeight);
+
     updateSleepStatus(height, TFT_POWER_PIN);
-    handleSleepLED(GreenLed);        
+    handleSleepLED(GreenLed);
 
     delay(50);
 }
-
-
