@@ -27,6 +27,8 @@ const int ButtonPin = 12;
 // TFT instance //
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
+void calibrationMode();
+
 // power LED variable //
 bool GreenLedState = false;
 
@@ -140,6 +142,7 @@ void setup() {
         tft.setRotation(1);
         tft.setTextSize(1);
         calibrationMode();
+       
     }
 
     tft.initR(INITR_GREENTAB);
@@ -151,66 +154,65 @@ void setup() {
 
     if (!isBurned()) {
         tft.fillScreen(ST7735_BLACK);
-        tft.setCursor(10, 20);
-        tft.println("Burn Mode");
         tft.setCursor(10, 40);
+        tft.println("Burn Mode");
+        tft.setCursor(10, 55);
         tft.println("Move to MIN position");
-        tft.setCursor(10, 60);
+        tft.setCursor(10, 70);
         tft.println("Press BTN");
+        uint8_t burnCount = readBurnCount();
+        tft.fillScreen(ST7735_BLACK);
+        tft.setCursor(10, 85);
+        tft.print("ZMCO: ");
+        tft.println(burnCount & 0x03);
+    
 
         // wait for button press
         while (digitalRead(ButtonPin) == HIGH);
         while (digitalRead(ButtonPin) == LOW);
 
-        uint16_t zeroPos = readRawAngle(); // raw counts 0..4095
-        writeZPOSandMANG(zeroPos, 0); // temporary write ZPOS
-
+        uint16_t zpos = readRawAngle(); // raw counts 0..4095
         tft.fillScreen(ST7735_BLACK);
-        tft.setCursor(10, 20);
-        tft.println("MIN recorded");
         tft.setCursor(10, 40);
+        tft.print("MIN angle: ");
+        tft.println(zpos);
+        tft.setCursor(10, 55);
         tft.println("Move to MAX position");
-        tft.setCursor(10, 60);
+        tft.setCursor(10, 70);
         tft.println("Press BTN");
 
         while (digitalRead(ButtonPin) == HIGH);
         while (digitalRead(ButtonPin) == LOW);
 
-        uint16_t maxPos = readRawAngle();
-
-        // calculate MANG (difference, modular 4096)
-        uint16_t mang;
-        if (maxPos >= zeroPos) mang = maxPos - zeroPos;
-        else mang = 4096 + maxPos - zeroPos;
-
-        // Minimal range check: must be > 18 degrees => > (18/360)*4096 ≈ 205
-        if (mang < 205) {
-            tft.fillScreen(ST7735_BLACK);
-            tft.setCursor(10, 30);
-            tft.println("Range too small!");
-            tft.setCursor(10, 50);
-            tft.println("Abort burn");
-            delay(2000);
-            // fall through to normal mode without burn
-        } else {
-            // write ZPOS, MPOS, MANG and execute burn
-            burnAngleAndMANG(zeroPos, maxPos); // function writes registers and issues burn
-            delay(200);
-
+        uint16_t mpos = readRawAngle();
         tft.fillScreen(ST7735_BLACK);
         tft.setCursor(10, 40);
-        tft.println("Burn Complete!");
-        tft.setCursor(10, 60);
-        tft.println("Power cycle now");
+        tft.print("MAX angle: ");
+        tft.println(mpos);
+        
+        delay(5000);
 
-        delay(2000);
-        resetFunc();
+        tft.fillScreen(ST7735_BLACK);
+        tft.setCursor(10, 30);
+        tft.println("Burning...");
+        uint16_t mangOut = 0;
+        bool ok = burnAngleAndMANG(zpos, mpos, &mangOut);
+        
+
+        if(isBurned()){
+            tft.fillScreen(ST7735_BLACK);
+            tft.setCursor(10,40);
+            tft.println("Burn Scusses");
+        }else{
+            tft.fillScreen(ST7735_BLACK);
+            tft.setCursor(10,40);
+            tft.println("Burn Failed");
+
         }
-    } else {
-    tft.fillScreen(ST7735_BLACK);
-    tft.setCursor(10, 40);
-    tft.println("Normal Mode");
-    delay(2000);
+        delay(5000);
+
+       resetFunc();
+    
     }
 
     restoreCalibrationFromEEPROM();
@@ -219,7 +221,7 @@ void setup() {
     if (isnan(heightOffset)) heightOffset = 0.0f;
     isReferenceSet = true;
 
-    setMaxAngle(0x0200); // 45 degrees range (runtime override if needed)
+    // setMaxAngle(0x0200); // 45 degrees range (runtime override if needed)
 
     tft.fillScreen(ST7735_BLACK);
     tft.setTextColor(0xf7be);
@@ -258,6 +260,7 @@ void calibrationMode() {
     }else{
         tft.println("Burn False");
     }
+/*
 
     uint16_t zpos = readRegister16(AS5600_ZPOS);
     uint16_t mpos = readRegister16(AS5600_MPOS);
@@ -286,13 +289,7 @@ void calibrationMode() {
     tft.print(scaledAngle,5);
     tft.println(" deg");
 
-    uint8_t brunCount = readBurnCount();
-    tft.setCursor(10,100);
-    tft.print("BRN CNT: 0x");
-    tft.println(brunCount,HEX);
-
-
-
+*/
     while (digitalRead(ButtonPin) == LOW);
     while (digitalRead(ButtonPin) == HIGH);
 

@@ -13,43 +13,67 @@ const float caribHeight = 5.0f;
 float height = 0.0;
 float heightOffset = 0.0f;
 
+// AS5600 constants
+#define AS5600_ADDR 0x36
+#define REG_ZMCO 0x00
+#define REG_ZPOS 0x01
+#define REG_MPOS 0x03
+#define REG_MANG 0x05
+#define REG_RAW_ANGLE 0x0C
+#define REG_BURN 0xFF
+#define BURN_CMD_ZPOS_MPOS_MANG 0x40
+
 // float newScale = 1.0f;
 
 float scaleFactor = 1.394124f;
 float offset = 0.0f;
 
 // ---- I2C Utility ----
-uint16_t readRegister16(uint8_t reg) {
+static bool writeRegister16_internal(uint8_t reg, uint16_t value) {
     Wire.beginTransmission(AS5600_ADDR);
     Wire.write(reg);
-    Wire.endTransmission();
-    Wire.requestFrom((uint8_t)AS5600_ADDR, (uint8_t)2);
-    if (Wire.available() < 2) return 0;
-    uint16_t val = ((uint16_t)Wire.read() << 8) | Wire.read();
-    return val;
-}
-
-bool writeRegister16_checked(uint8_t reg, uint16_t value) {
-    Wire.beginTransmission((uint8_t)AS5600_ADDR);
-    Wire.write(reg);
-    Wire.write((uint8_t)(value >> 8));
-    Wire.write((uint8_t)(value & 0xFF));
-    int rc = Wire.endTransmission(); // 0 = success
+    Wire.write((value >> 8) & 0xFF);
+    Wire.write(value & 0xFF);
+    int rc = Wire.endTransmission();
     return (rc == 0);
 }
 
-void writeRegister16(uint8_t reg, uint16_t value) {
+static uint16_t readRegister16_internal(uint8_t reg) {
     Wire.beginTransmission(AS5600_ADDR);
     Wire.write(reg);
-    Wire.write((uint8_t)(value >> 8));
-    Wire.write((uint8_t)(value & 0xFF));
-    Wire.endTransmission();
+    if (Wire.endTransmission(false) != 0) return 0xFFFF;
+    Wire.requestFrom((uint8_t)AS5600_ADDR, (uint8_t)2);
+    if (Wire.available() < 2) return 0xFFFF;
+    uint16_t hi = Wire.read();
+    uint16_t lo = Wire.read();
+    return (hi << 8) | lo;
 }
 
-// ---- Burn / status ----
-bool isBurned() {
+static int readRegister8_internal(uint8_t reg) {
     Wire.beginTransmission(AS5600_ADDR);
-    Wire.write(AS5600_REG_BURN);
+    Wire.write(reg);
+    if (Wire.endTransmission(false) != 0) return -1;
+    Wire.requestFrom((uint8_t)AS5600_ADDR, (uint8_t)1);
+    if (Wire.available() < 1) return -1;
+    return Wire.read();
+}
+
+uint16_t readRawAngle() {
+    uint16_t v = readRegister16_internal(REG_RAW_ANGLE);
+    if (v == 0xFFFF) return 0;
+    return v & 0x0FFF;
+}
+
+float readEncoderAngle() {
+    uint16_t raw = readRawAngle();
+    // keep same mapping as earlier project: optionally invert if needed
+    // here we convert raw to degrees 0..360
+    return (float)raw * (360.0f / 4096.0f);
+}
+
+bool isBurned() {
+ Wire.beginTransmission(AS5600_ADDR);
+    Wire.write(AS5600_REG_BURN);   // 0xFF
     Wire.endTransmission(false);
     Wire.requestFrom((uint8_t)AS5600_ADDR, (uint8_t)1);
     if (Wire.available()) {
@@ -59,74 +83,73 @@ bool isBurned() {
     return false;
 }
 
-uint16_t readRawAngle() {
-    return readRegister16(AS5600_AS5601_REG_RAW_ANGLE) & 0x0FFF;
-}
-
-// Burn: write ZPOS, MPOS, MANG then issue BURN_ANGLE
-void burnAngleAndMANG(uint16_t zpos, uint16_t mpos) {
-    // write ZPOS
-    writeRegister16(AS5600_ZPOS, zpos);
-    delay(30);
-
-    // write MPOS
-    writeRegister16(AS5600_MPOS, mpos);
-    delay(30);
-
-    // compute and write MANG
+// write ZPOS/MPOS/MANG (volatile), then issue burn command (OTP).
+// returns true if burn appears to have incremented ZMCO (success)
+bool burnAngleAndMANG(uint16_t zpos, uint16_t mpos, uint16_t *outMang) {
+    // compute MANG (modular)
     uint16_t mang;
     if (mpos >= zpos) mang = mpos - zpos;
     else mang = 4096 + mpos - zpos;
-    writeRegister16(AS5600_MANG, mang);
-    delay(50); // allow device to commit volatile writes
 
-    // --- OTP (burn) with return-code check ---
-    Wire.beginTransmission((uint8_t)AS5600_ADDR);
-    Wire.write(AS5600_REG_BURN);    // 0xFF
-    Wire.write(AS5600_BURN_ANGLE);  // 0x80
-    int rc = Wire.endTransmission(); // 0 = success
-    if (rc != 0) {
-        delay(20);
-        Wire.beginTransmission((uint8_t)AS5600_ADDR);
-        Wire.write(AS5600_REG_BURN);
-        Wire.write(AS5600_BURN_ANGLE);
-        rc = Wire.endTransmission();
-        if (rc != 0) {
-            return;
-        }
+    if (outMang) *outMang = mang;
+
+    // write registers
+    if (!writeRegister16_internal(REG_ZPOS, zpos)) return false;
+    delay(20);
+    if (!writeRegister16_internal(REG_MPOS, mpos)) return false;
+    delay(20);
+    if (!writeRegister16_internal(REG_MANG, mang)) return false;
+    delay(30); // allow device to commit volatile values
+
+    // read ZMCO (before)
+    int before = readRegister8_internal(REG_ZMCO);
+    if (before < 0) return false;
+
+    if (before >= 3) {
+        // no more burns allowed
+        return false;
     }
 
-    delay(100); // OTP処理時間（デバイスによって推奨値を参照）
-    uint8_t burn = readBurnCount(); // read back burn count / status
-
-}
-// Write ZPOS and MANG without burning (helper used during manual flow)
-void writeZPOSandMANG(uint16_t zpos, uint16_t mang) {
-    writeRegister16(AS5600_ZPOS, zpos);
-    delay(10);
-    writeRegister16(AS5600_MANG, mang);
-    delay(10);
-}
-
-// ---- 通常動作用 ----
-void setZeroPosition(uint16_t zeroPosition) {
-    writeRegister16(AS5600_ZPOS, zeroPosition);
-}
-
-void setMaxAngle(uint16_t maxAngle) {
-    writeRegister16(AS5600_MANG, maxAngle);
-}
-
-float readEncoderAngle() {
-    // always read RAW angle register 0x0C and scale
+    // Issue burn command. As per datasheet use 0x40 for burning ZPOS/MPOS/MANG.
+    uint8_t status;
     Wire.beginTransmission(AS5600_ADDR);
-    Wire.write(AS5600_AS5601_REG_RAW_ANGLE);
-    Wire.endTransmission(false);
-    Wire.requestFrom((uint8_t)AS5600_ADDR, (uint8_t)2);
-    if (Wire.available() < 2) return NAN;
-    uint16_t val = ((uint16_t)Wire.read() << 8) | Wire.read();
-    val &= 0x0FFF;
-    return val * (360.0 / 4096.0);
+    Wire.write(REG_BURN);
+    Wire.write(0x80);
+    int rc = Wire.endTransmission();
+    if (rc != 0) {
+        // try one more time
+        delay(20);
+        Wire.beginTransmission(AS5600_ADDR);
+        Wire.write(REG_BURN);
+        Wire.write(0x80);
+        rc = Wire.endTransmission();
+        if (rc != 0) return false;
+    }
+
+    // wait OTP commit (datasheet suggests wait; use 100-200ms)
+    delay(200);
+
+    // read ZMCO (after)
+    
+    return true;
+}
+
+bool writeZPOSandMANG_volatile(uint16_t zpos, uint16_t mang) {
+    if (!writeRegister16_internal(REG_ZPOS, zpos)) return false;
+    delay(10);
+    if (!writeRegister16_internal(REG_MANG, mang)) return false;
+    delay(10);
+    return true;
+}
+
+// set ZPOS (volatile)
+bool setZeroPosition(uint16_t zeroPosition) {
+    return writeRegister16_internal(REG_ZPOS, zeroPosition);
+}
+
+// set MANG (volatile)
+bool setMaxAngle(uint16_t maxAngle) {
+    return writeRegister16_internal(REG_MANG, maxAngle);
 }
 
 void saveCurrentZeroPositionToEEPROM() {
