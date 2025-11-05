@@ -35,7 +35,7 @@ bool GreenLedState = false;
 // carib //
 float calibJigLow = 5.0f;
 float calibJigHeigh = 30.3f;
-float newScale = 1.0f;
+extern float newScale;
 
 void(*resetFunc)(void) = 0;
 
@@ -153,6 +153,7 @@ void setup() {
     tft.setTextColor(ST7735_WHITE);
 
     if (!isBurned()) {
+        Wire.setClock(100000);
         tft.fillScreen(ST7735_BLACK);
         tft.setCursor(10, 40);
         tft.println("Burn Mode");
@@ -257,6 +258,8 @@ void calibrationMode() {
     tft.setCursor(10,40);
     if(burned){
         tft.println("Burn Success");
+        uint8_t burnCount = readBurnCount();
+        tft.println(burnCount);
     }else{
         tft.println("Burn False");
     }
