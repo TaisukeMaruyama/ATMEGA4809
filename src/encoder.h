@@ -68,10 +68,16 @@ void   restoreCalibrationFromEEPROM();
 float  updateHeight();
 float  interpolateHeight(float angle);
 
+void   computeLinearCalibration();
+
 //------------------------------------
 // Utility
 //------------------------------------
 uint16_t readRegister16(uint8_t reg);
 void     writeRegister16(uint8_t reg, uint16_t value);
+uint16_t readRawAngleSingle();
+uint16_t readRawAngleOversampled(uint16_t samples = 64);
+float readEncoderAngleOversampled(uint16_t samples = 64);
+
 
 #endif

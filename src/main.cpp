@@ -24,10 +24,16 @@
 #define TFT_POWER_PIN 13
 const int ButtonPin = 12;
 
+float norm = 0.0f;
+float avg = 0.0f;
+uint32_t range = 0;
+uint32_t delta = 0;
+uint64_t add = 0;
 // TFT instance //
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 void calibrationMode();
+float readAngleNormalizedOversampled(uint16_t zpos, uint16_t mpos, uint16_t samples = 64);
 
 // power LED variable //
 bool GreenLedState = false;
@@ -39,87 +45,106 @@ extern float newScale;
 
 void(*resetFunc)(void) = 0;
 
-//==============================
-// Utility: Robust Statistics
-//==============================
-float medianOfArray(float *buf, int n) {
-    float tmp[n];
-    for (int i = 0; i < n; i++) tmp[i] = buf[i];
-    for (int i = 0; i < n - 1; i++) {
-        for (int j = i + 1; j < n; j++) {
-            if (tmp[i] > tmp[j]) {
-                float t = tmp[i];
-                tmp[i] = tmp[j];
-                tmp[j] = t;
-            }
-        }
-    }
-    if (n % 2 == 1) return tmp[n / 2];
-    else return (tmp[n / 2 - 1] + tmp[n / 2]) * 0.5f;
-}
-
-float trimmedMean(float *buf, int n, float trim_frac) {
+float trimmedMeanLocal(float *buf, int n, float trim_frac) {
     int cut = (int)(n * trim_frac);
-    if (cut * 2 >= n) return medianOfArray(buf, n);
-    float tmp[n];
-    for (int i = 0; i < n; i++) tmp[i] = buf[i];
-    for (int i = 0; i < n - 1; i++) {
-        for (int j = i + 1; j < n; j++) {
-            if (tmp[i] > tmp[j]) {
-                float t = tmp[i];
-                tmp[i] = tmp[j];
-                tmp[j] = t;
-            }
-        }
+    if (cut * 2 >= n) {
+        // return median
+        for (int i = 0; i < n - 1; ++i) for (int j = i + 1; j < n; ++j) if (buf[i] > buf[j]) { float t = buf[i]; buf[i] = buf[j]; buf[j] = t; }
+        return buf[n/2];
     }
-    float sum = 0;
-    int cnt = 0;
-    for (int i = cut; i < n - cut; i++) {
-        sum += tmp[i];
-        cnt++;
-    }
-    return sum / cnt;
+    // sort
+    for (int i = 0; i < n - 1; ++i) for (int j = i + 1; j < n; ++j) if (buf[i] > buf[j]) { float t = buf[i]; buf[i] = buf[j]; buf[j] = t; }
+    float sum = 0; int cnt = 0;
+    for (int i = cut; i < n - cut; ++i) { sum += buf[i]; cnt++; }
+    return sum / (float)cnt;
 }
 
-float getStableAngleRobust(int preDiscard = 10, int sampleN = 300, float trim_frac = 0.10f, int wait_ms = 10) {
-    float lastAngle = readEncoderAngle();
+// ==============================
+// 高分解能正規化角度（オーバーサンプリング）
+// ==============================
+float readAngleNormalizedOversampled(uint16_t zpos, uint16_t mpos, uint16_t samples) {
+    if (samples == 0) samples = 64;
+    uint64_t sum_local = 0;
+    int succes = 0;
+
+    for (uint16_t i = 0; i < samples; ++i) {
+         Wire.beginTransmission(AS5600_ADDR);
+        Wire.write(0x0C); // RAW_ANGLE MSB
+        Wire.endTransmission(false);
+        delayMicroseconds(50);
+        Wire.requestFrom((uint8_t)AS5600_ADDR, (uint8_t)2);
+        if (Wire.available() < 2) {
+            delay(2);
+            continue;
+        }
+        uint16_t raw = ((uint16_t)Wire.read() << 8) | Wire.read();
+        raw &= 0x0FFF;
+        sum_local += raw;
+        succes++;        
+        delayMicroseconds(200);
+    }
+
+    if (succes == 0) {
+        return norm * 360.0f;
+    }
+
+    float avg_local = (float)sum_local / (float)succes; // 0..4095
+    int32_t delta_local = (int32_t)avg_local - (int32_t)zpos;
+    if (delta_local < 0) delta_local += 4096;
+    int32_t range_local = (mpos >= zpos) ? (mpos - zpos) : (4096 + mpos - zpos);
+    if (range_local <= 0) range_local = 4096; // フォールバック
+
+    if (delta_local > range_local) delta_local = range_local;
+
+    float norm_local = (float)delta_local / (float)range_local;
+
+    // グローバルに反映（UI表示用）
+    avg = avg_local;
+    delta = (uint32_t)delta_local;
+    range = (uint32_t)range_local;
+    norm = norm_local;
+
+    return norm_local * 360.0f;
+}
+
+// ==============================
+// getStableAngleRobust 互換（UI用）
+// ==============================
+float getStableAngleRobust_local(uint16_t zpos, uint16_t mpos, int preDiscard = 10, int sampleN = 300, float trim_frac = 0.10f, int wait_ms = 10) {
+    float last = readEncoderAngleOversampled(4);
     int stableCount = 0;
     while (true) {
-        float current = readEncoderAngle();
-        float diff = fabs(current - lastAngle);
-        if (diff < 0.005) stableCount++;
+        float cur = readEncoderAngleOversampled(4);
+        float diff = fabs(cur - last);
+        if (diff < 0.005f) stableCount++;
         else stableCount = 0;
-        if (stableCount > 30) break;
-        lastAngle = current;
+        if (stableCount > 20) break;
+        last = cur;
         delay(10);
     }
 
-    tft.fillRect(0, 60, 160, 20, ST7735_BLACK);
-    tft.setCursor(10, 70);
-    tft.setTextColor(ST7735_WHITE);
-    tft.print("Stable... Averaging");
+    // 前捨て
+    for (int i = 0; i < preDiscard; ++i) { readEncoderAngleOversampled(1); delay(wait_ms); }
 
-    for (int i = 0; i < preDiscard; i++) {
-        readEncoderAngle();
+    // サンプル取得（配列に格納してtrimmed mean）
+    int N = sampleN;
+    if (N > 512) N = 512;
+    float *samples = (float*)malloc(sizeof(float) * N);
+    if (!samples) { // メモリ不足時のフォールバック
+        float acc = 0;
+        for (int i = 0; i < 50; ++i) { acc += readAngleNormalizedOversampled(zpos, mpos, 8); delay(wait_ms); }
+        return acc / 50.0f;
+    }
+    for (int i = 0; i < N; ++i) {
+        samples[i] = readAngleNormalizedOversampled(zpos, mpos, 8);
         delay(wait_ms);
     }
-
-    float samples[sampleN];
-    for (int i = 0; i < sampleN; i++) {
-        samples[i] = readEncoderAngle();
-        delay(wait_ms);
-    }
-
-    float tmean = trimmedMean(samples, sampleN, trim_frac);
-
-    tft.fillRect(0, 60, 160, 20, ST7735_BLACK);
-    tft.setCursor(10, 70);
-    tft.print("Done");
-
+    float tmean = trimmedMeanLocal(samples, N, trim_frac);
+    free(samples);
     return tmean;
 }
 
-//==============================
+// ==============================
 // setup()
 //==============================
 void setup() {
@@ -172,7 +197,7 @@ void setup() {
         while (digitalRead(ButtonPin) == HIGH);
         while (digitalRead(ButtonPin) == LOW);
 
-        uint16_t zpos = readRawAngle(); // raw counts 0..4095
+        uint16_t zpos = readRawAngleOversampled(64);
         tft.fillScreen(ST7735_BLACK);
         tft.setCursor(10, 40);
         tft.print("MIN angle: ");
@@ -185,7 +210,7 @@ void setup() {
         while (digitalRead(ButtonPin) == HIGH);
         while (digitalRead(ButtonPin) == LOW);
 
-        uint16_t mpos = readRawAngle();
+        uint16_t mpos = readRawAngleOversampled(64);
         tft.fillScreen(ST7735_BLACK);
         tft.setCursor(10, 40);
         tft.print("MAX angle: ");
@@ -204,6 +229,7 @@ void setup() {
             tft.fillScreen(ST7735_BLACK);
             tft.setCursor(10,40);
             tft.println("Burn Scusses");
+        
         }else{
             tft.fillScreen(ST7735_BLACK);
             tft.setCursor(10,40);
@@ -220,6 +246,8 @@ void setup() {
     restoreZeroPositionFromEEPROM();
     EEPROM.get(300, heightOffset);
     if (isnan(heightOffset)) heightOffset = 0.0f;
+    
+    computeLinearCalibration();
     isReferenceSet = true;
 
     // setMaxAngle(0x0200); // 45 degrees range (runtime override if needed)
@@ -242,10 +270,13 @@ void setup() {
 
 
 void calibrationMode() {
-
     const int NUM_POINTS = 5;
     float knownHeights[NUM_POINTS] = {2.5f, 5.0f, 16.0f, 27.0f, 38.0f};
     float measuredAngles[NUM_POINTS];
+
+    // Burn get ZPOS/MANG
+    uint16_t zpos = readRegister16(AS5600_ZPOS) & 0x0FFF;
+    uint16_t mpos = readRegister16(AS5600_MPOS) & 0x0FFF;
 
     tft.fillScreen(ST7735_BLACK);
     tft.setTextSize(1);
@@ -260,41 +291,19 @@ void calibrationMode() {
         tft.println("Burn Success");
         uint8_t burnCount = readBurnCount();
         tft.println(burnCount);
+        tft.setCursor(10,55);
+        tft.print("ZPOS : "); tft.println(zpos);
+        tft.setCursor(10,70);
+        tft.print("MPOS : "); tft.println(mpos);
     }else{
         tft.println("Burn False");
     }
-/*
 
-    uint16_t zpos = readRegister16(AS5600_ZPOS);
-    uint16_t mpos = readRegister16(AS5600_MPOS);
-    uint16_t mang = readRegister16(AS5600_MANG);
-
-    tft.setCursor(10,50);
-    tft.print("ZPOS: 0x");
-    tft.println(zpos,HEX);
-
-    tft.setCursor(10,60);
-    tft.print("MPOS: 0x");
-    tft.println(mpos,HEX);
-
-    tft.setCursor(10,70);
-    tft.print("MANG: 0x");
-    tft.println(mang,HEX);
-
-    float rawAngle = readRawAngle()*(360.0/4096.0);
-    float scaledAngle = readEncoderAngle();
-    tft.setCursor(10,80);
-    tft.print("RAW: ");
-    tft.print(rawAngle,5);
-    tft.println(" deg");
-    tft.setCursor(10,90);
-    tft.print("ANG: ");
-    tft.print(scaledAngle,5);
-    tft.println(" deg");
-
-*/
+    
     while (digitalRead(ButtonPin) == LOW);
     while (digitalRead(ButtonPin) == HIGH);
+
+
 
     for (int i = 0; i < NUM_POINTS; i++) {
         tft.fillScreen(ST7735_BLACK);
@@ -308,8 +317,8 @@ void calibrationMode() {
         while (digitalRead(ButtonPin) == LOW);
         while (digitalRead(ButtonPin) == HIGH);
 
-        float avgAngle = getStableAngleRobust(10, 200, 0.1f, 5);
-        measuredAngles[i] = avgAngle;
+        float angleDeg = getStableAngleRobust_local(zpos,mpos,10,150,0.10f,10)*360.0f;
+        measuredAngles[i] = angleDeg;
 
         tft.fillScreen(ST7735_BLACK);
         tft.setCursor(10, 20);
@@ -317,18 +326,37 @@ void calibrationMode() {
         tft.print(knownHeights[i], 1);
         tft.println("mm");
         tft.setCursor(10, 40);
-        tft.print("AvgAngle: ");
-        tft.print(avgAngle, 3);
+        tft.print("norm: ");
+        tft.print(angleDeg, 3);
         tft.println(" deg");
+
+        tft.setCursor(10, 55);
+        tft.print("delta: ");
+        tft.print(delta, 3);
+
+
+        tft.setCursor(10, 70);
+        tft.print("range: ");
+        tft.print(range, 3);
+
+        tft.setCursor(10, 85);
+        tft.print("avg: ");
+        tft.print(avg, 3);
+
+
+
 
         while (digitalRead(ButtonPin) == LOW);
         while (digitalRead(ButtonPin) == HIGH);
     }
 
-    for (int i = 0; i < NUM_POINTS; i++) {
-        EEPROM.put(100 + i * sizeof(float), measuredAngles[i]);
-        EEPROM.put(200 + i * sizeof(float), knownHeights[i]);
+    // ---- EEPROM save ----
+    for (int i=0; i<NUM_POINTS; i++){
+        EEPROM.put(ADDR_KNOWN_ANGLES + i*sizeof(float), measuredAngles[i]);
+        EEPROM.put(ADDR_KNOWN_HEIGHTS + i*sizeof(float), knownHeights[i]);
     }
+    
+
 
     tft.fillScreen(ST7735_BLACK);
     tft.setCursor(10, 40);
@@ -346,15 +374,23 @@ void loop() {
     if (digitalRead(ButtonPin) == LOW) {
         if (!buttonPressed) {
             buttonPressed = true;
-            float currentAngle = readEncoderAngle();
-            float measuredHeight = interpolateHeight(currentAngle);
+            // set reference offset via current measured angle
+            uint16_t zpos = readRegister16(AS5600_ZPOS) & 0x0FFF;
+            uint16_t mpos = readRegister16(AS5600_MPOS) & 0x0FFF;
+            float curAngle = readEncoderAngleOversampled(64);
+            float measuredHeight = interpolateHeight(curAngle);
             const float referenceHeight = 5.0f;
             heightOffset = measuredHeight - referenceHeight;
             EEPROM.put(300, heightOffset);
         }
     } else {
+        if(buttonPressed) {
+         setInitialAngleFromSensor();
+         saveCurrentZeroPositionToEEPROM();
+        }
         buttonPressed = false;
     }
+
 
     updateBatteryStatus(tft);
 
